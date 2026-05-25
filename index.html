@@ -574,6 +574,13 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 }
 .admin-booking-edit-modal .form-group{margin-bottom:.9rem;}
 .admin-booking-edit-modal textarea.form-input{resize:vertical;min-height:92px;}
+.admin-private-panel{display:none;margin:0 0 1rem;padding:1rem 1.1rem;border:1px solid rgba(158,118,204,.28);background:rgba(158,118,204,.08);border-radius:8px;}
+.admin-private-panel.show{display:block;}
+.admin-private-title{font-family:'Playfair Display',serif;font-size:1.05rem;font-weight:800;color:var(--text);margin-bottom:.35rem;}
+.admin-private-sub{font-size:.78rem;color:var(--muted);line-height:1.45;}
+.admin-private-list{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem;}
+.admin-private-chip{border:1px solid rgba(158,118,204,.3);background:rgba(255,255,255,.04);border-radius:999px;padding:.38rem .65rem;font-size:.7rem;color:var(--purple);font-weight:800;letter-spacing:.03em;}
+.td-private-badge{display:inline-flex;margin-top:.35rem;border:1px solid rgba(158,118,204,.32);background:rgba(158,118,204,.1);color:var(--purple);border-radius:999px;padding:.2rem .45rem;font-size:.62rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;}
 .admin-access-dialog{
   width:min(92vw,760px);
   max-width:760px;
@@ -5048,8 +5055,11 @@ textarea{
         <button class="filter-btn"        id="filter-confirmed" onclick="setFilter('confirmed')">Confirmed</button>
         <button class="filter-btn"        id="filter-rejected"  onclick="setFilter('rejected')">Rejected</button>
         <button class="filter-btn"        id="filter-needsProof" onclick="setFilter('needsProof')">Needs Proof / Point</button>
+        <button class="filter-btn"        id="filter-private" onclick="setFilter('private')">Private Shows</button>
         <button class="filter-btn perm-claims-edit" type="button" onclick="openAdminEmergencyCredit()">Emergency Show Credit</button>
+        <button class="filter-btn perm-claims-edit" type="button" onclick="openAdminEmergencyUpload()">Emergency Upload Access</button>
       </div>
+      <div class="admin-private-panel" id="privateShowsPanel"></div>
       <div class="table-wrap">
         <div class="tbl-head">
           <div class="th">Team / Booker</div>
@@ -5505,6 +5515,7 @@ textarea{
       <div class="form-group"><label class="form-label">Member Email</label><input class="form-input" id="abe-email" type="email" placeholder="Registered email"></div>
     </div>
     <div class="form-group"><label class="form-label">Status</label><select class="form-input" id="abe-status"><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option></select></div>
+    <div class="form-group"><label class="form-label">Show Visibility</label><select class="form-input" id="abe-visibility"><option value="Public">Public - visible to members</option><option value="Private">Private - admin only</option></select></div>
     <div class="form-group"><label class="form-label">Admin Note</label><textarea class="form-input" id="abe-notes" rows="3" placeholder="Reason / sudden change note"></textarea></div>
     <div class="modal-actions sticky-actions">
       <button type="button" class="btn-secondary" onclick="closeAdminBookingEdit()">Cancel</button>
@@ -5740,7 +5751,7 @@ async function fetchMyBookingsLive() {
   try {
     // Targeted SQL: only fetch THIS member's bookings (phone last-10 or email match)
     var rows = await neonSQL(
-      'SELECT id, venue_id, venue, date, type, name, booked_by, phone, email, notes, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url ' +
+      'SELECT id, venue_id, venue, date, type, name, booked_by, phone, email, notes, visibility, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url ' +
       'FROM bookings ' +
       'WHERE RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10) = $1 ' +
       '   OR LOWER(TRIM(email)) = $2 ' +
@@ -5754,6 +5765,7 @@ async function fetchMyBookingsLive() {
       date: b.date||'', type: b.type||'', name: b.name||'',
       bookedBy: b.booked_by||'',
       phone: b.phone||'', email: b.email||'', notes: b.notes||'',
+      visibility: normalizeTitleCase(b.visibility, 'Public'),
         status: b.status||'pending', createdAt: b.created_at||'',
         proofUrl: b.proof_url||'', proofClaimed: !!b.proof_claimed,
         checkinAt: b.checkin_at||null,
@@ -6179,6 +6191,7 @@ async function saveRemoteNow(showToastOnFail) {
     booked_by:b.bookedBy||b.booked_by||'',
     phone:b.phone||'', email:b.email||'',
     notes:b.notes||'',
+    visibility:b.visibility || (isBookingPrivate(b) ? 'Private' : 'Public'),
     status:b.status||'pending', created_at:b.createdAt||new Date().toISOString(),
     push_token:b.pushToken||''
   }));
@@ -6251,6 +6264,15 @@ function isVenueOpen(v) {
   var st = normalizeStatus(v && v.status, 'open');
   return !st || st === 'open' || st === 'active' || st === 'available';
 }
+function isVenuePrivate(v) {
+  return /private/i.test(String(v && v.visibility || ''));
+}
+function isBookingPrivate(b) {
+  if (!b) return false;
+  if (/private/i.test(String(b.visibility || ''))) return true;
+  var v = findVenueForBooking(b);
+  return isVenuePrivate(v);
+}
 function parseVenueClock(value, fallback) {
   var s = String(value || fallback || '').trim();
   if (!s) return null;
@@ -6316,7 +6338,7 @@ function isVenueOver(v, now) {
   return windowInfo.end.getTime() <= (now || new Date()).getTime();
 }
 function isVenueUpcomingForUsers(v) {
-  return isVenueOpen(v) && normalizeVenueDate(v.date) && !isVenueOver(v);
+  return isVenueOpen(v) && !isVenuePrivate(v) && normalizeVenueDate(v.date) && !isVenueOver(v);
 }
 function getBookingWindow(b) {
   if (!b) return null;
@@ -6366,6 +6388,7 @@ function mapBookingRows(bRows) {
     date:b.date||'', type:b.type||'', name:b.name||'',
     bookedBy:b.booked_by||b.bookedBy||'',
     phone:b.phone||'', email:b.email||'', price:b.price||0, notes:b.notes||'',
+    visibility:normalizeTitleCase(b.visibility, 'Public'),
     status:b.status||'pending', createdAt:b.created_at||'',
     proofUrl:b.proof_url||'', proofClaimed:!!b.proof_claimed,
     checkinAt:b.checkin_at||null,
@@ -6433,7 +6456,7 @@ async function refreshLiveCoreDataNow(opts) {
   showSyncStatus(' Live venues updated','var(--green)');
 
   const optionalResults = await Promise.allSettled([
-    neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000'),
+    neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000'),
     neonSQL('SELECT key,value FROM settings')
   ]);
   if (optionalResults[0].status === 'fulfilled') {
@@ -6531,7 +6554,7 @@ function renderGigCalendar() {
   if (!list) return;
   const now = new Date();
   const confirmed = allBookings
-    .filter(b => b.status === 'confirmed' && !isBookingShowOver(b, now))
+    .filter(b => b.status === 'confirmed' && !isBookingPrivate(b) && !isBookingShowOver(b, now))
     .sort((a,b) => bookingStartTimeMs(a) - bookingStartTimeMs(b));
   if (!confirmed.length) {
     list.innerHTML = '<div class="gc-empty">No confirmed shows yet - check back soon!</div>';
@@ -7357,13 +7380,14 @@ function startAdminPolling() {
   _adminPollTimer = setInterval(function() {
     if (!adminLoggedIn) return;
     // Lightweight poll - only fetch bookings (not venues/gallery)
-    neonSQL('SELECT id, venue, venue_id, date, name, booked_by, type, status, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url, created_at FROM bookings ORDER BY created_at DESC LIMIT 100')
+    neonSQL('SELECT id, venue, venue_id, date, name, booked_by, type, visibility, status, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url, created_at FROM bookings ORDER BY created_at DESC LIMIT 100')
       .then(function(rows){ return rows || []; })
       .then(function(rows) {
         var fresh = (rows||[]).map(function(b){ return {
           id: b.id, venueId: b.venue_id||'', venue: b.venue||'',
           date: b.date||'', name: b.name||'', type: b.type||'', status: b.status||'pending',
           bookedBy: b.booked_by||'',
+          visibility: normalizeTitleCase(b.visibility, 'Public'),
           proofUrl: b.proof_url||'', proofClaimed: !!b.proof_claimed, checkinAt: b.checkin_at||null,
           checkinLat: b.checkin_lat||null, checkinLng: b.checkin_lng||null,
           checkinAccuracy: b.checkin_accuracy||null, checkinMapUrl: b.checkin_map_url||'',
@@ -7383,6 +7407,9 @@ function startAdminPolling() {
             changed = true;
           } else if (f.bookedBy && existing.bookedBy !== f.bookedBy) {
             existing.bookedBy = f.bookedBy;
+            changed = true;
+          } else if (existing.visibility !== f.visibility) {
+            existing.visibility = f.visibility;
             changed = true;
           }
         });
@@ -8314,7 +8341,7 @@ function dismissNotif(id) {
 // ========================================
 // DB MIGRATIONS (run once on startup)
 // ========================================
-const MIGRATION_VERSION = '2026-05-21-venue-type-1';
+const MIGRATION_VERSION = '2026-05-25-private-shows-1';
 async function runMigrations(force) {
   try { if (!force && localStorage.getItem('ots_migration_version') === MIGRATION_VERSION) return; } catch(e) {}
   const run = async (sql) => { try { await neonSQL(sql); } catch(e) { console.warn('Migration skipped:', e && (e.message||e)); } };
@@ -8326,6 +8353,7 @@ async function runMigrations(force) {
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email         TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booked_by     TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS push_token    TEXT    DEFAULT ''");
+  await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS visibility    TEXT    DEFAULT 'Public'");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS proof_url     TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS proof_claimed BOOLEAN DEFAULT false");
   await run("CREATE TABLE IF NOT EXISTS claims (id SERIAL PRIMARY KEY, booking_id TEXT NOT NULL, member_phone TEXT NOT NULL, member_name TEXT DEFAULT '', status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW())");
@@ -8560,6 +8588,7 @@ async function submitBooking() {
     phone:     formPhone || memberPhone || '',
     notes:     document.getElementById('inp-notes').value.trim(),
     price:     0,
+    visibility: venue.visibility || 'Public',
     status:    'pending',
     createdAt: new Date().toISOString(),
     pushToken: _nativePushToken || '',
@@ -8584,6 +8613,7 @@ async function submitBooking() {
       date: b.date, type: b.type, name: b.name,
       booked_by: b.bookedBy,
       phone: b.phone, email: b.email, notes: b.notes,
+      visibility: b.visibility || 'Public',
       status: b.status, created_at: b.createdAt,
       push_token: b.pushToken || _nativePushToken || ''
     }]);
@@ -8730,7 +8760,8 @@ function _adminContactHtml(label, title) {
 function renderUserBookings() {
   var list = document.getElementById('bookingsList');
   if (!list) return;
-  if (!myBookings.length) {
+  var visibleBookings = myBookings.filter(function(b){ return !isBookingPrivate(b); });
+  if (!visibleBookings.length) {
     list.innerHTML = '<div class="empty-state">No requests yet. Submit your slot above.</div>';
     return;
   }
@@ -8750,7 +8781,7 @@ function renderUserBookings() {
       checkInToShow(btn.dataset.checkin).finally(function(){ btn.disabled = false; });
     }
   };
-  list.innerHTML = myBookings.map(function(b) {
+  list.innerHTML = visibleBookings.map(function(b) {
     var days = _daysUntil(b.date);
     var canCancel = _canWithdrawOnline(b.date); // online withdrawal closes in the last 2 days
     var nearDate  = days >= 0 && days <= 2; // 0-2 days  contact admin
@@ -8844,7 +8875,7 @@ function renderUserBookings() {
   // Show "Clear All" only when there is at least one dismissable entry
   var caBtn = document.getElementById('clearAllBtn');
   if (caBtn) {
-    var hasDismissable = myBookings.some(function(b) {
+    var hasDismissable = visibleBookings.some(function(b) {
       return b.status === 'rejected' || b.status === 'cancelled' ||
              (b.status === 'confirmed' && (b.proofClaimed || _daysUntil(b.date) < 0));
     });
@@ -9020,7 +9051,7 @@ function refreshAdmin(attempt) {
 
   var tasks = [];
   if (loadVenues) tasks.push({ key:'venues', promise:neonSQL('SELECT id,name,day,date,time_start,time_end,confirm_status,visibility,status,venue_type,landmark,map_url,image_url FROM venues ORDER BY date ASC, time_start ASC') });
-  if (loadBookings) tasks.push({ key:'bookings', promise:neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000') });
+  if (loadBookings) tasks.push({ key:'bookings', promise:neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000') });
   if (!tasks.length) {
     setAdminLoadingState(false);
     _refreshAdminUI();
@@ -10089,11 +10120,34 @@ function setFilter(f) {
 function isBookingNeedsProofOrPoint(b) {
   return !!(b && b.status === 'confirmed' && isBookingShowOver(b, new Date()) && (!b.proofUrl || !b.proofClaimed));
 }
+function renderPrivateShowsPanel(rows) {
+  var panel = document.getElementById('privateShowsPanel');
+  if (!panel) return;
+  var privateRows = (rows || allBookings || []).filter(isBookingPrivate);
+  if (!privateRows.length) {
+    panel.classList.remove('show');
+    panel.innerHTML = '';
+    return;
+  }
+  var upcoming = privateRows
+    .slice()
+    .sort(function(a,b){ return bookingStartTimeMs(a) - bookingStartTimeMs(b); })
+    .slice(0, 4)
+    .map(function(b){
+      return '<span class="admin-private-chip">' + otsEscapeHtml(formatDateShort(b.date) + ' - ' + (b.venue || 'Private Show')) + '</span>';
+    }).join('');
+  panel.classList.add('show');
+  panel.innerHTML = '<div class="admin-private-title">Private Shows (' + privateRows.length + ')</div>' +
+    '<div class="admin-private-sub">Admin-only shows are hidden from the member schedule and venue booking pages. Use this panel/filter for internal GCC/Foundation/private work.</div>' +
+    '<div class="admin-private-list">' + upcoming + '<button class="filter-btn" type="button" onclick="setFilter(\'private\')">View Private Shows</button></div>';
+}
 function filterTable() {
   const q=(document.getElementById('adminSearch')?.value||'').toLowerCase();
   bookingPage = Math.max(1, bookingPage || 1);
   let rows=[...allBookings];
+  renderPrivateShowsPanel(rows);
   if (currentFilter === 'needsProof') rows = rows.filter(isBookingNeedsProofOrPoint);
+  else if (currentFilter === 'private') rows = rows.filter(isBookingPrivate);
   else if (currentFilter!=='all') rows=rows.filter(b=>b.status===currentFilter);
   if (q) rows=rows.filter(b=>
     String(b.name||'').toLowerCase().includes(q) ||
@@ -10156,6 +10210,7 @@ function renderAdminTable(rows) {
         <div style="font-weight:700;font-size:.85rem">${otsEscapeHtml(b.name || '-')}</div>
         <div style="font-size:.7rem;color:var(--blue);font-weight:700;margin-top:.15rem;">Booked by: ${otsEscapeHtml(getBookingPersonName(b) || '-')}</div>
         <div style="font-size:.72rem;color:var(--muted);margin-top:.15rem;">${otsEscapeHtml(b.venue || '-')}</div>
+        ${isBookingPrivate(b) ? '<span class="td-private-badge">Private</span>' : ''}
       </div>
       <div class="td muted">${formatDate(b.date)}</div>
       <div class="td"><span style="font-size:.8rem;font-weight:600;color:${TYPE_COLORS[b.type]||'var(--purple)'}">${b.type}</span></div>
@@ -10167,7 +10222,8 @@ function renderAdminTable(rows) {
                <img src="${b.proofUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1.5px solid var(--green);" alt="proof">
                <span style="font-size:.65rem;font-weight:700;color:var(--green);letter-spacing:.04em;"> CLAIMED</span>
              </div>
-             ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>` : ''}`
+             ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminAllowProofUpload('${b.id}')">Allow Upload</button>
+             <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>` : ''}`
           : b.proofUrl
           ? `<span style="font-size:.68rem;color:var(--yellow);font-weight:600;"> Uploaded</span>
              ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${b.id}')">Grant Point</button>
@@ -10177,7 +10233,8 @@ function renderAdminTable(rows) {
                <span style="font-size:.68rem;color:var(--green);font-weight:800;letter-spacing:.04em;">Reached</span>
                <span style="font-size:.62rem;color:var(--muted);">${formatCheckinTime(b.checkinAt)}</span>
                ${b.checkinMapUrl ? `<a href="${otsEscapeHtml(b.checkinMapUrl)}" target="_blank" rel="noopener" style="font-size:.62rem;color:var(--blue);font-weight:700;">Open location</a>` : ''}
-               ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminGrantShowPoint('${b.id}')">Grant Point</button>
+               ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminAllowProofUpload('${b.id}')">Allow Upload</button>
+               <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminGrantShowPoint('${b.id}')">Grant Point</button>
                <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>` : ''}
              </div>`
           : b.status === 'confirmed' && canRescueShows
@@ -10262,8 +10319,10 @@ function adminBookingVenueChanged() {
   if (!v) return;
   var nameEl = document.getElementById('abe-venue-name');
   var dateEl = document.getElementById('abe-date');
+  var visEl = document.getElementById('abe-visibility');
   if (nameEl) nameEl.value = v.name || '';
   if (dateEl && v.date) dateEl.value = v.date;
+  if (visEl) visEl.value = v.visibility || 'Public';
 }
 
 function openAdminBookingEdit(id) {
@@ -10285,6 +10344,7 @@ function openAdminBookingEdit(id) {
   document.getElementById('abe-phone').value = b.phone || '';
   document.getElementById('abe-email').value = b.email || '';
   document.getElementById('abe-status').value = b.status || 'pending';
+  document.getElementById('abe-visibility').value = b.visibility || (isBookingPrivate(b) ? 'Private' : 'Public');
   document.getElementById('abe-notes').value = b.notes || '';
   _setAdminBookingEditError('');
   modal.classList.add('show');
@@ -10307,9 +10367,20 @@ function openAdminEmergencyCredit() {
   document.getElementById('abe-phone').value = '';
   document.getElementById('abe-email').value = '';
   document.getElementById('abe-status').value = 'confirmed';
+  document.getElementById('abe-visibility').value = 'Public';
   document.getElementById('abe-notes').value = 'Emergency admin show credit';
   _setAdminBookingEditError('');
   modal.classList.add('show');
+}
+
+function openAdminEmergencyUpload() {
+  if (!requireAdminPerm('claims', 'emergency upload access')) return;
+  openAdminEmergencyCredit();
+  _adminBookingEditMode = 'manual-upload';
+  document.getElementById('abe-title').textContent = 'Emergency Upload Access';
+  document.getElementById('abe-sub').textContent = 'For verified shows that happened without a booking. This creates a confirmed request so the member can upload proof after the show.';
+  document.getElementById('abe-save-btn').textContent = 'Create Upload Access';
+  document.getElementById('abe-notes').value = 'Emergency admin upload access';
 }
 
 function closeAdminBookingEdit() {
@@ -10333,6 +10404,7 @@ function readAdminBookingEditForm() {
     phone: (document.getElementById('abe-phone').value || '').trim(),
     email: (document.getElementById('abe-email').value || '').trim().toLowerCase(),
     status: (document.getElementById('abe-status').value || 'pending').trim(),
+    visibility: (document.getElementById('abe-visibility').value || 'Public').trim(),
     notes: (document.getElementById('abe-notes').value || '').trim()
   };
 }
@@ -10342,7 +10414,7 @@ function validateAdminBookingEdit(data) {
   if (!data.date) return 'Date is required.';
   if (!data.type) return 'Slot type is required.';
   if (!data.name) return 'Team / performer name is required.';
-  if (_adminBookingEditMode === 'manual-credit' && !data.phone) return 'Registered phone is required to add the show count and point.';
+  if ((_adminBookingEditMode === 'manual-credit' || _adminBookingEditMode === 'manual-upload') && !data.phone) return 'Registered phone is required to map this show to the member.';
   if (!data.phone && !data.email) return 'Phone or email is required so the member can receive updates.';
   return '';
 }
@@ -10352,10 +10424,12 @@ async function saveAdminBookingEdit() {
   var data = readAdminBookingEditForm();
   var error = validateAdminBookingEdit(data);
   if (error) { _setAdminBookingEditError(error); return; }
-  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = _adminBookingEditMode === 'manual-credit' ? 'Creating...' : 'Saving...'; }
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = (_adminBookingEditMode === 'manual-credit' || _adminBookingEditMode === 'manual-upload') ? 'Creating...' : 'Saving...'; }
   try {
     if (_adminBookingEditMode === 'manual-credit') {
       await createEmergencyShowCredit(data);
+    } else if (_adminBookingEditMode === 'manual-upload') {
+      await createEmergencyUploadAccess(data);
     } else {
       await saveExistingBookingEdit(data);
     }
@@ -10366,7 +10440,7 @@ async function saveAdminBookingEdit() {
   } finally {
     if (saveBtn) {
       saveBtn.disabled = false;
-      saveBtn.textContent = _adminBookingEditMode === 'manual-credit' ? 'Create & Add Point' : 'Save Changes';
+      saveBtn.textContent = _adminBookingEditMode === 'manual-credit' ? 'Create & Add Point' : _adminBookingEditMode === 'manual-upload' ? 'Create Upload Access' : 'Save Changes';
     }
   }
 }
@@ -10386,6 +10460,7 @@ async function saveExistingBookingEdit(data) {
     phone: data.phone,
     email: data.email,
     notes: data.notes,
+    visibility: data.visibility,
     status: data.status
   };
   await dbPatch('bookings', b.id, updates);
@@ -10399,6 +10474,7 @@ async function saveExistingBookingEdit(data) {
     phone: data.phone,
     email: data.email,
     notes: data.notes,
+    visibility: data.visibility,
     status: data.status
   });
   var mb = myBookings.find(function(x){ return x.id === b.id; });
@@ -10443,6 +10519,7 @@ async function createEmergencyShowCredit(data) {
     email: data.email || (member && member.email) || '',
     notes: data.notes || 'Emergency admin show credit',
     price: 0,
+    visibility: data.visibility || 'Public',
     status: 'confirmed',
     createdAt: new Date().toISOString(),
     proofUrl: '',
@@ -10460,6 +10537,7 @@ async function createEmergencyShowCredit(data) {
     phone: booking.phone,
     email: booking.email,
     notes: booking.notes,
+    visibility: booking.visibility,
     status: booking.status,
     created_at: booking.createdAt,
     proof_url: '',
@@ -10491,6 +10569,75 @@ async function createEmergencyShowCredit(data) {
   });
   logAdminAction('emergency_show_credit', booking.name + ' @ ' + booking.venue + ' #' + booking.id).catch(function(){});
   showToast('', 'Show Credit Added', '1 show count and 1 point added for ' + booking.name + '.');
+}
+
+async function createEmergencyUploadAccess(data) {
+  if (!requireAdminPerm('claims', 'emergency upload access')) return;
+  var member = data.phone ? await adminFindMemberByPhone(data.phone) : null;
+  var memberName = data.name || (member && member.name) || data.phone || data.email || 'Member';
+  var bookingId = 'OTS-UPLOAD-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
+  var st = data.venueId ? getVenueWindow(venues.find(function(v){ return v.id === data.venueId; })) : null;
+  var manualAt = (st && st.start) ? st.start.toISOString() : new Date().toISOString();
+  var booking = {
+    id: bookingId,
+    venueId: data.venueId,
+    venue: data.venue,
+    date: data.date,
+    type: data.type,
+    name: memberName,
+    bookedBy: data.bookedBy || currentAdminUsername || 'Admin',
+    phone: data.phone,
+    email: data.email || (member && member.email) || '',
+    notes: data.notes || 'Emergency admin upload access',
+    price: 0,
+    visibility: data.visibility || 'Public',
+    status: 'confirmed',
+    createdAt: new Date().toISOString(),
+    proofUrl: '',
+    proofClaimed: false,
+    checkinAt: manualAt
+  };
+  await sbUpsert('bookings', [{
+    id: booking.id,
+    venue_id: booking.venueId,
+    venue: booking.venue,
+    date: booking.date,
+    type: booking.type,
+    name: booking.name,
+    booked_by: booking.bookedBy,
+    phone: booking.phone,
+    email: booking.email,
+    notes: booking.notes,
+    visibility: booking.visibility,
+    status: booking.status,
+    created_at: booking.createdAt,
+    proof_url: '',
+    proof_claimed: false,
+    checkin_at: booking.checkinAt,
+    checkin_lat: null,
+    checkin_lng: null,
+    checkin_accuracy: null,
+    checkin_map_url: ''
+  }]);
+  allBookings.unshift(booking);
+  saveLocal();
+  filterTable();
+  renderGigCalendar();
+  renderVenueList();
+  renderUserBookings();
+  notifyMemberUpdate({
+    updateType: 'booking_update',
+    status: 'confirmed',
+    bookingId: booking.id,
+    venue: booking.venue,
+    date: booking.date,
+    phone: booking.phone,
+    email: booking.email,
+    memberName: booking.name,
+    reason: 'Admin added upload access for a completed show'
+  });
+  logAdminAction('emergency_upload_access', booking.name + ' @ ' + booking.venue + ' #' + booking.id).catch(function(){});
+  showToast('', 'Upload Access Added', booking.name + ' can open My Requests and upload proof photo.');
 }
 
 function adminViewProof(id) {
@@ -10547,13 +10694,15 @@ async function adminAllowProofUpload(id) {
       checkin_lat: null,
       checkin_lng: null,
       checkin_accuracy: null,
-      checkin_map_url: ''
+      checkin_map_url: '',
+      proof_claimed: false
     });
     b.checkinAt = manualAt;
     b.checkinLat = null;
     b.checkinLng = null;
     b.checkinAccuracy = null;
     b.checkinMapUrl = '';
+    b.proofClaimed = false;
     var mb = myBookings.find(function(x){ return x.id === id; });
     if (mb) {
       mb.checkinAt = manualAt;
@@ -10561,6 +10710,7 @@ async function adminAllowProofUpload(id) {
       mb.checkinLng = null;
       mb.checkinAccuracy = null;
       mb.checkinMapUrl = '';
+      mb.proofClaimed = false;
     }
     await adminRestoreClearedRequest(id, true);
     saveLocal();
@@ -10802,7 +10952,7 @@ function startGigPoll() {
     if (document.hidden) return;
     try {
       const rows = await neonSQL(
-        'SELECT id, venue_id, venue, date, type, name, booked_by, phone, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url FROM bookings WHERE status=$1 ORDER BY date ASC',
+        'SELECT id, venue_id, venue, date, type, name, booked_by, phone, visibility, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url FROM bookings WHERE status=$1 ORDER BY date ASC',
         ['confirmed']
       );
       const confirmedIds = new Set(rows.map(function(r){ return r.id; }));
@@ -10815,6 +10965,7 @@ function startGigPoll() {
             id:r.id, venueId:r.venue_id||'', venue:r.venue||'',
             date:r.date||'', type:r.type||'', name:r.name||'',
             phone:r.phone||'', status:'confirmed', createdAt:r.created_at||'',
+            visibility:normalizeTitleCase(r.visibility, 'Public'),
             proofUrl:r.proof_url||'', proofClaimed:!!r.proof_claimed,
             checkinAt:r.checkin_at||null,
             checkinLat:r.checkin_lat||null,
