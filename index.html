@@ -4953,9 +4953,9 @@ textarea{
 
       <div class="csv-format-hint">
         <strong> Expected CSV Format</strong>
-        Columns (in order): <code>Day</code>, <code>Date</code>, <code>Show Slot</code>, <code>Event/Campaign</code>, <code>Venue</code>, <code>Venue Confirmation Status</code>, <code>PRIVATE / PUBLIC</code><br>
+        Columns (in order): <code>Day</code>, <code>Date</code>, <code>Show Slot</code>, <code>Event/Campaign</code>, <code>Venue</code>, optional <code>Venue Type</code><br>
         Date: <code>1-Jan-2026</code> or <code>01/01/2026</code> &nbsp;-&nbsp; Slot: <code>6:30 - 7:30 PM</code> or <code>6:00 to 8:00 PM</code><br>
-        Example: <code>Thursday, 1-Jan-2026, 6:30 - 7:30 PM, GCC, Rotticious, Confirmed, Public</code>
+        Example: <code>Thursday, 1-Jan-2026, 6:30 - 7:30 PM, GCC, Rotticious, GCC Venue</code>
       </div>
 
       <div class="csv-import-zone perm-venues-edit" id="csvDropZone">
@@ -4970,13 +4970,11 @@ textarea{
       <div id="csvPreviewWrap" style="display:none;">
         <div style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;margin-bottom:.8rem;" id="csvPreviewTitle">Preview</div>
         <div class="csv-preview">
-          <div class="csv-preview-head" style="grid-template-columns:60px 100px 140px 1fr 110px 90px 80px;">
+          <div class="csv-preview-head" style="grid-template-columns:60px 100px 140px 1fr 80px;">
             <div>Day</div>
             <div>Date</div>
             <div>Show Slot</div>
             <div>Venue</div>
-            <div>Confirmation</div>
-            <div>Visibility</div>
             <div>Status</div>
           </div>
           <div id="csvPreviewBody"></div>
@@ -4997,6 +4995,7 @@ textarea{
         <button class="filter-btn"        id="filter-pending"   onclick="setFilter('pending')">Pending</button>
         <button class="filter-btn"        id="filter-confirmed" onclick="setFilter('confirmed')">Confirmed</button>
         <button class="filter-btn"        id="filter-rejected"  onclick="setFilter('rejected')">Rejected</button>
+        <button class="filter-btn"        id="filter-needsProof" onclick="setFilter('needsProof')">Needs Proof / Point</button>
       </div>
       <div class="table-wrap">
         <div class="tbl-head">
@@ -5381,20 +5380,13 @@ textarea{
       <div class="form-group"><label class="form-label">Show Slot Start</label><input type="time" class="form-input" id="vm-time-start"></div>
       <div class="form-group"><label class="form-label">Show Slot End</label><input type="time" class="form-input" id="vm-time-end"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Venue Confirmation Status</label>
-        <select class="form-input" id="vm-confirm">
-          <option value="Available">Available</option>
-          <option value="Pending">Pending</option>
-          <option value="Cancelled">Cancelled</option>
-        </select>
-      </div>
-      <div class="form-group"><label class="form-label">Private / Public</label>
-        <select class="form-input" id="vm-visibility">
-          <option value="Public">Public</option>
-          <option value="Private">Private</option>
-        </select>
-      </div>
+    <div class="form-group"><label class="form-label">Venue Type</label>
+      <select class="form-input" id="vm-venue-type">
+        <option value="">Normal Venue</option>
+        <option value="GCC Venue">GCC Venue</option>
+        <option value="Foundation Venue">Foundation Venue</option>
+        <option value="Partner Venue">Partner Venue</option>
+      </select>
     </div>
     <div class="form-group"><label class="form-label">Specific Location / Landmark <span style="color:var(--muted);font-weight:400;">(optional)</span></label><input type="text" class="form-input" id="vm-landmark" placeholder="e.g. Near Gandhi Statue, Marina Beach"></div>
     <div class="form-group"><label class="form-label">Google Maps Link <span style="color:var(--muted);font-weight:400;">(optional - exact pin)</span></label><input type="url" class="form-input" id="vm-map-url" placeholder="https://maps.google.com/?q=..."></div>
@@ -6068,6 +6060,7 @@ async function saveRemoteNow(showToastOnFail) {
     time_start:v.timeStart||'', time_end:v.timeEnd||'',
     confirm_status:v.confirmStatus||'Available',
     visibility:v.visibility||'Public', status:v.status||'open',
+    venue_type:v.venueType||'',
     landmark:v.landmark||'',
     map_url:v.mapUrl||'',
     image_url:v.imageUrl||''
@@ -6130,6 +6123,21 @@ function normalizeTitleCase(value, fallback) {
   var s = String(value || fallback || '').trim();
   if (!s) return fallback || '';
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+function normalizeVenueType(value, venueName) {
+  var raw = String(value || '').trim();
+  var hay = (raw + ' ' + String(venueName || '')).toLowerCase();
+  if (/\bgcc\b/.test(hay) || hay.indexOf('greater chennai') > -1) return 'GCC Venue';
+  if (hay.indexOf('foundation') > -1) return 'Foundation Venue';
+  if (hay.indexOf('partner') > -1) return 'Partner Venue';
+  if (/^(gcc venue|foundation venue|partner venue)$/i.test(raw)) return normalizeTitleCase(raw, '');
+  return '';
+}
+function venueTypeBadgeHtml(v) {
+  var type = normalizeVenueType(v && v.venueType, v && v.name);
+  if (!type) return '';
+  var color = type === 'GCC Venue' ? 'var(--green)' : type === 'Foundation Venue' ? 'var(--blue)' : 'var(--purple)';
+  return `<span class="vrc-badge" style="border-color:${color};color:${color};background:rgba(255,255,255,.04);">${otsEscapeHtml(type)}</span>`;
 }
 function isVenueOpen(v) {
   var st = normalizeStatus(v && v.status, 'open');
@@ -6238,6 +6246,7 @@ function mapVenueRows(vRows) {
     timeStart:v.time_start||'', timeEnd:v.time_end||'',
     confirmStatus:normalizeTitleCase(v.confirm_status, 'Available'),
     visibility:normalizeTitleCase(v.visibility, 'Public'), status:normalizeStatus(v.status, 'open'),
+    venueType:normalizeVenueType(v.venue_type, v.name),
     landmark:v.landmark||'',
     mapUrl:v.map_url||'',
     imageUrl:v.image_url||''
@@ -6294,7 +6303,7 @@ async function refreshLiveCoreDataNow(opts) {
   let vRows = [], bRows = null, sRows = [];
 
   try {
-    vRows = await neonSQL('SELECT id,name,day,date,time_start,time_end,confirm_status,visibility,status,landmark,map_url,image_url FROM venues ORDER BY date ASC, time_start ASC');
+    vRows = await neonSQL('SELECT id,name,day,date,time_start,time_end,confirm_status,visibility,status,venue_type,landmark,map_url,image_url FROM venues ORDER BY date ASC, time_start ASC');
   } catch (e) {
     if (!opts._retry) {
       console.warn('[OTS] venues load slow, retrying once:', e && (e.message || e));
@@ -6316,7 +6325,7 @@ async function refreshLiveCoreDataNow(opts) {
   showSyncStatus(' Live venues updated','var(--green)');
 
   const optionalResults = await Promise.allSettled([
-    neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 300'),
+    neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000'),
     neonSQL('SELECT key,value FROM settings')
   ]);
   if (optionalResults[0].status === 'fulfilled') {
@@ -6860,7 +6869,8 @@ function renderVenueList() {
           isPastMonthVenue ? 'past-month' : ''
         ].filter(Boolean).join(' ');
         const landmarkHtml = v.landmark ? `<div class="vrc-meta" style="color:var(--blue);"> ${otsEscapeHtml(v.landmark)}</div>` : '';
-        const statusBadge = hasConfirmed ? '<div class="vrc-badges"><span class="vrc-badge vrc-booked">Booked</span></div>' : '';
+        const venueTypeBadge = venueTypeBadgeHtml(v);
+        const statusBadge = (hasConfirmed || venueTypeBadge) ? `<div class="vrc-badges">${hasConfirmed ? '<span class="vrc-badge vrc-booked">Booked</span>' : ''}${venueTypeBadge}</div>` : '';
         const actionBtn = isPastMonthVenue
           ? `<span style="font-size:.72rem;color:var(--muted);font-style:italic;">Booking closed</span>`
           : hasConfirmed
@@ -8113,7 +8123,7 @@ function dismissNotif(id) {
 // ========================================
 // DB MIGRATIONS (run once on startup)
 // ========================================
-const MIGRATION_VERSION = '2026-05-19-member-chat-1';
+const MIGRATION_VERSION = '2026-05-21-venue-type-1';
 async function runMigrations(force) {
   try { if (!force && localStorage.getItem('ots_migration_version') === MIGRATION_VERSION) return; } catch(e) {}
   const run = async (sql) => { try { await neonSQL(sql); } catch(e) { console.warn('Migration skipped:', e && (e.message||e)); } };
@@ -8121,6 +8131,7 @@ async function runMigrations(force) {
   await run("ALTER TABLE venues   ADD COLUMN IF NOT EXISTS image_url     TEXT    DEFAULT ''");
   await run("ALTER TABLE venues   ADD COLUMN IF NOT EXISTS landmark      TEXT    DEFAULT ''");
   await run("ALTER TABLE venues   ADD COLUMN IF NOT EXISTS map_url       TEXT    DEFAULT ''");
+  await run("ALTER TABLE venues   ADD COLUMN IF NOT EXISTS venue_type    TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email         TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booked_by     TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS push_token    TEXT    DEFAULT ''");
@@ -8817,8 +8828,8 @@ function refreshAdmin(attempt) {
   if (tab === 'photos') loadPerfPhotos().catch(function(){});
 
   var tasks = [];
-  if (loadVenues) tasks.push({ key:'venues', promise:neonSQL('SELECT id,name,day,date,time_start,time_end,confirm_status,visibility,status,landmark,map_url,image_url FROM venues ORDER BY date ASC, time_start ASC') });
-  if (loadBookings) tasks.push({ key:'bookings', promise:neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 300') });
+  if (loadVenues) tasks.push({ key:'venues', promise:neonSQL('SELECT id,name,day,date,time_start,time_end,confirm_status,visibility,status,venue_type,landmark,map_url,image_url FROM venues ORDER BY date ASC, time_start ASC') });
+  if (loadBookings) tasks.push({ key:'bookings', promise:neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000') });
   if (!tasks.length) {
     setAdminLoadingState(false);
     _refreshAdminUI();
@@ -9478,7 +9489,11 @@ function renderVenueManager() {
   grid.innerHTML = venues.map(v=>{
     const isBooked = allBookings.some(b => b.venueId === v.id && b.status === 'confirmed');
     const bookedBadge = isBooked
-      ? '<div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap;"><span class="vrc-badge vrc-booked">Booked</span></div>'
+      ? '<span class="vrc-badge vrc-booked">Booked</span>'
+      : '';
+    const venueTypeBadge = venueTypeBadgeHtml(v);
+    const badgeRow = (bookedBadge || venueTypeBadge)
+      ? `<div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap;">${bookedBadge}${venueTypeBadge}</div>`
       : '';
     return `
     <div class="vmg-card">
@@ -9490,7 +9505,7 @@ function renderVenueManager() {
           <div class="vmg-cap"> ${v.day||''} ${formatDateShort(v.date)}</div>
           <div class="vmg-cap" style="margin-top:2px;"> ${formatVenueTimeRange(v)}</div>
           ${v.landmark ? `<div class="vmg-cap" style="margin-top:2px;color:var(--blue);"> ${otsEscapeHtml(v.landmark)}</div>` : ''}
-          ${bookedBadge}
+          ${badgeRow}
         </div>
       </div>
       <div class="vmg-actions" ${canEditVenues ? '' : 'style="display:none;"'}>
@@ -9544,8 +9559,7 @@ function openVenueModal(id) {
   document.getElementById('vm-date').value        = v?.date||'';
   document.getElementById('vm-time-start').value  = v?.timeStart||'';
   document.getElementById('vm-time-end').value    = v?.timeEnd||'';
-  document.getElementById('vm-confirm').value     = v?.confirmStatus||'Available';
-  document.getElementById('vm-visibility').value  = v?.visibility||'Public';
+  document.getElementById('vm-venue-type').value  = normalizeVenueType(v?.venueType, v?.name);
   document.getElementById('vm-landmark').value    = v?.landmark||'';
   document.getElementById('vm-map-url').value     = v?.mapUrl||'';
   document.getElementById('vm-image-url').value   = v?.imageUrl||'';
@@ -9578,8 +9592,9 @@ async function saveVenue() {
     const date       = getVal('vm-date');
     const timeStart  = getVal('vm-time-start');
     const timeEnd    = getVal('vm-time-end');
-    const confirmStatus = getVal('vm-confirm') || 'Available';
-    const visibility    = getVal('vm-visibility') || 'Public';
+    const confirmStatus = 'Available';
+    const visibility    = 'Public';
+    const venueType     = normalizeVenueType(getVal('vm-venue-type'), name);
     const landmark      = getVal('vm-landmark');
     const mapUrl        = getVal('vm-map-url');
     const imageUrl      = getVal('vm-image-url');
@@ -9607,12 +9622,12 @@ async function saveVenue() {
     if (editingVenueId) {
       const v = venues.find(x=>x.id===editingVenueId);
       var oldVenueName = v ? v.name : '';
-      if (v) Object.assign(v,{name,day,date,timeStart,timeEnd,confirmStatus,visibility,landmark,mapUrl,imageUrl});
+      if (v) Object.assign(v,{name,day,date,timeStart,timeEnd,confirmStatus,visibility,venueType,landmark,mapUrl,imageUrl});
       var renameResult = await propagateVenueRename(oldVenueName, name, editingVenueId);
       if (typeof logAdminAction === 'function') logAdminAction('edit_venue', name + ' (' + date + ')' + (renameResult.venues > 1 ? ' - renamed ' + renameResult.venues + ' venue rows' : '')).catch(function(){});
       showToast('','Venue Updated', renameResult.venues > 1 ? `"${oldVenueName}" renamed to "${name}" everywhere.` : `"${name}" has been updated.`);
     } else {
-      venues.push({id:'v-'+Date.now(),name,day,date,timeStart,timeEnd,confirmStatus,visibility,landmark,mapUrl,imageUrl,status:'open'});
+      venues.push({id:'v-'+Date.now(),name,day,date,timeStart,timeEnd,confirmStatus,visibility,venueType,landmark,mapUrl,imageUrl,status:'open'});
       if (typeof logAdminAction === 'function') logAdminAction('add_venue', name + ' (' + date + ')').catch(function(){});
       showToast('','Venue Added',`"${name}" is now live on the booking page.`);
     }
@@ -9707,13 +9722,14 @@ function parseAndPreviewCSV(text) {
     const cols = (colsRaw || []).map(cleanCSVCell);
     if (!cols.some(c => c)) return;
 
-    // Col order: Day, Date, Show Slot, Event/Campaign, Venue, Venue Confirmation Status, PRIVATE/PUBLIC
+    // Col order: Day, Date, Show Slot, Event/Campaign, Venue
     const day      = cols[0] || '';
     const dateRaw  = cols[1] || '';
     const slotRaw  = cols[2] || '';
     // cols[3] = Event/Campaign - skipped
     const name     = (cols[4] || '').trim();
-    const confirmRaw = (cols[5] || '').trim();
+    const venueTypeRaw = (cols[5] || '').trim();
+    const confirmRaw = (cols[6] || '').trim();
     const visRaw     = (cols[6] || '').trim().replace(/[\r\n\s]+/g,' ');
 
     // -- Convert date: accepts "1-Jan-2026", "01/01/2026", "2026-01-01" --
@@ -9778,7 +9794,8 @@ function parseAndPreviewCSV(text) {
     else if (seenImportKeys.has(rowKey)) { rowStatus='dup'; }
     else seenImportKeys.add(rowKey);
 
-    csvParsedRows.push({ day:day.trim(), date:isoDate, rawDate:dateRaw, timeStart, timeEnd, slotRaw, name, confirmStatus, visibility, rowStatus, errMsg });
+    const venueType = normalizeVenueType(venueTypeRaw, name);
+    csvParsedRows.push({ day:day.trim(), date:isoDate, rawDate:dateRaw, timeStart, timeEnd, slotRaw, name, venueType, confirmStatus, visibility, rowStatus, errMsg });
   });
 
   renderCSVPreview();
@@ -9808,13 +9825,11 @@ function renderCSVPreview() {
   importBtn.disabled = newCount === 0;
 
   body.innerHTML = csvParsedRows.map(r => `
-    <div class="csv-preview-row" style="grid-template-columns:60px 100px 140px 1fr 110px 90px 80px;">
+      <div class="csv-preview-row" style="grid-template-columns:60px 100px 140px 1fr 80px;">
       <div style="font-size:.78rem;color:var(--muted);">${r.day||'-'}</div>
       <div style="font-size:.78rem;color:var(--muted);">${r.rawDate||formatDateShort(r.date)}</div>
       <div style="font-size:.78rem;">${r.timeStart?formatVenueTimeRange(r):'-'}</div>
-      <div style="font-size:.82rem;font-weight:600;">${r.name||'<em style="color:var(--muted)">-</em>'}${r.errMsg?`<div style="font-size:.68rem;color:var(--red);margin-top:2px;">${r.errMsg}</div>`:''}</div>
-      <div style="font-size:.75rem;">${r.confirmStatus||'-'}</div>
-      <div style="font-size:.75rem;color:${r.visibility==='Private'?'var(--purple)':'var(--blue)'};">${r.visibility||'-'}</div>
+      <div style="font-size:.82rem;font-weight:600;">${r.name||'<em style="color:var(--muted)">-</em>'}${r.venueType?`<div style="margin-top:.3rem;">${venueTypeBadgeHtml(r)}</div>`:''}${r.errMsg?`<div style="font-size:.68rem;color:var(--red);margin-top:2px;">${r.errMsg}</div>`:''}</div>
       <div><span class="csv-row-status ${r.rowStatus}">${r.rowStatus==='new'?'New':r.rowStatus==='dup'?'Duplicate':'Error'}</span></div>
     </div>`).join('');
 }
@@ -9828,7 +9843,7 @@ function importCSVVenues() {
       id: 'v-'+Date.now()+'-'+Math.random().toString(36).substr(2,4),
       name: r.name, day: r.day, date: r.date, timeStart: r.timeStart, timeEnd: r.timeEnd,
       confirmStatus: r.confirmStatus,
-      visibility: r.visibility, landmark:'', mapUrl:'', status: 'open'
+      visibility: r.visibility, venueType: r.venueType || normalizeVenueType('', r.name), landmark:'', mapUrl:'', status: 'open'
     });
   });
   syncCalendarToVenueDates(true);
@@ -9876,14 +9891,19 @@ function setFilter(f) {
   currentFilter=f;
   bookingPage = 1;
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('filter-'+f).classList.add('active');
+  var filterBtn = document.getElementById('filter-'+f);
+  if (filterBtn) filterBtn.classList.add('active');
   filterTable();
+}
+function isBookingNeedsProofOrPoint(b) {
+  return !!(b && b.status === 'confirmed' && isBookingShowOver(b, new Date()) && (!b.proofUrl || !b.proofClaimed));
 }
 function filterTable() {
   const q=(document.getElementById('adminSearch')?.value||'').toLowerCase();
   bookingPage = Math.max(1, bookingPage || 1);
   let rows=[...allBookings];
-  if (currentFilter!=='all') rows=rows.filter(b=>b.status===currentFilter);
+  if (currentFilter === 'needsProof') rows = rows.filter(isBookingNeedsProofOrPoint);
+  else if (currentFilter!=='all') rows=rows.filter(b=>b.status===currentFilter);
   if (q) rows=rows.filter(b=>
     String(b.name||'').toLowerCase().includes(q) ||
     String(getBookingPersonName(b)||'').toLowerCase().includes(q) ||
@@ -9932,7 +9952,10 @@ function renderAdminTable(rows) {
     tbody.innerHTML=`<div class="table-empty"><span class="emoji"></span>Loading live bookings...</div>`;
     return;
   }
-  if (!rows.length){tbody.innerHTML=`<div class="table-empty"><span class="emoji"></span>No bookings match.</div>`;return;}
+  if (!rows.length){
+    tbody.innerHTML=`<div class="table-empty"><span class="emoji"></span>${currentFilter === 'needsProof' ? 'No completed shows are waiting for proof or manual point.' : 'No bookings match.'}</div>`;
+    return;
+  }
   var pageRows = rows.slice((bookingPage - 1) * bookingPageSize, bookingPage * bookingPageSize);
   tbody.innerHTML=pageRows.map(b=>`
     <div class="tbl-row" id="admin-booking-${b.id}">
