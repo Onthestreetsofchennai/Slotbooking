@@ -6254,6 +6254,35 @@ function normalizeVenueType(value, venueName) {
   if (/^(gcc venue|foundation venue|partner venue)$/i.test(raw)) return normalizeTitleCase(raw, '');
   return '';
 }
+function normalizeVenueNameForDuplicate(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function normalizeVenueClockForDuplicate(value) {
+  var c = parseVenueClock(value, '');
+  if (!c) return String(value || '').trim();
+  return String(c.h).padStart(2, '0') + ':' + String(c.m).padStart(2, '0');
+}
+function venueDuplicateKey(v) {
+  if (!v) return '';
+  var name = normalizeVenueNameForDuplicate(v.name);
+  var date = normalizeVenueDate(v.date || '');
+  var start = normalizeVenueClockForDuplicate(v.timeStart || v.time_start || '');
+  var end = normalizeVenueClockForDuplicate(v.timeEnd || v.time_end || '');
+  if (!name || !date || !start || !end) return '';
+  return [name, date, start, end].join('|');
+}
+function findDuplicateVenue(candidate, excludeId) {
+  var key = venueDuplicateKey(candidate);
+  if (!key) return null;
+  return (venues || []).find(function(v) {
+    return String(v.id || '') !== String(excludeId || '') && venueDuplicateKey(v) === key;
+  }) || null;
+}
 function venueTypeBadgeHtml(v) {
   var type = normalizeVenueType(v && v.venueType, v && v.name);
   if (!type) return '';
@@ -8034,6 +8063,70 @@ function _removeSharedMember(i) {
   _renderSharedList();
 }
 
+async function lookupClaimMemberByPhone(phone) {
+  var normP = _normPhone(phone || '');
+  if (!normP) return null;
+  var local = (members || []).find(function(m){ return _normPhone(m.phone || '') === normP; });
+  if (local) return { phone: normP, name: local.name || '' };
+  try {
+    var rows = await neonSQL(
+      "SELECT name,phone FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 LIMIT 1",
+      [normP]
+    );
+    if (rows && rows[0]) return { phone: normP, name: rows[0].name || '' };
+  } catch(e) {
+    console.warn('[OTS] claim member lookup failed:', e && (e.message || e));
+  }
+  return { phone: normP, name: '' };
+}
+
+async function addMemberClaimFromRequest(bookingId) {
+  if (!memberLoggedIn) {
+    showToast('', 'Login Required', 'Please login before adding a member.');
+    return;
+  }
+  var b = myBookings.find(function(x){ return x.id === bookingId; }) ||
+          allBookings.find(function(x){ return x.id === bookingId; });
+  if (!b || b.status !== 'confirmed') {
+    showToast('', 'Not Available', 'Members can be added only for confirmed shows.');
+    return;
+  }
+  if (b.proofClaimed) {
+    showToast('', 'Already Approved', 'Please contact admin to restore this claim before adding members.');
+    return;
+  }
+  var enteredPhone = prompt('Enter the missed member mobile number');
+  if (enteredPhone === null) return;
+  var normP = _normPhone(enteredPhone);
+  if (!normP) {
+    showToast('', 'Phone Required', 'Enter a valid registered mobile number.');
+    return;
+  }
+  if (_normPhone(memberPhone || '') === normP) {
+    showToast('', 'Already Included', 'Your own point is already included in this claim.');
+    return;
+  }
+  try {
+    var existing = await neonSQL(
+      "SELECT id,status FROM claims WHERE booking_id=$1 AND RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10)=$2 LIMIT 1",
+      [bookingId, normP]
+    );
+    if (existing && existing.length) {
+      showToast('', 'Already Added', 'This member is already added for this show.');
+      return;
+    }
+    var member = await lookupClaimMemberByPhone(normP);
+    await neonSQL(
+      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason) VALUES ($1,$2,$3,'pending','show','Added by member after proof upload')",
+      [bookingId, normP, (member && member.name) || '']
+    );
+    showToast('', 'Member Added', 'Admin will review this member point with your proof.');
+  } catch(e) {
+    console.error('[OTS] add member claim:', e);
+    showToast('', 'Could Not Add', (e && e.message) || 'Please try again or contact admin.');
+  }
+}
+
 function previewProof(input) {
   var file = input && input.files && input.files[0];
   if (!file) return;
@@ -8803,7 +8896,8 @@ function renderUserBookings() {
           <button class="bi-cancel-btn" onclick="dismissRequest('${b.id}')" title="Remove from list" style="opacity:.65;margin-top:.35rem;">x Clear</button>`;
       } else if (b.proofUrl) {
         // Photo uploaded but awaiting admin approval
-        actionHtml = `<span class="proof-claimed-badge" style="background:rgba(255,200,60,.12);border-color:rgba(255,200,60,.35);color:#ffc83c;"> Awaiting Approval</span>`;
+        actionHtml = `<span class="proof-claimed-badge" style="background:rgba(255,200,60,.12);border-color:rgba(255,200,60,.35);color:#ffc83c;"> Awaiting Approval</span>
+          <button class="proof-upload-btn" style="margin-top:.35rem;background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;" onclick="addMemberClaimFromRequest('${b.id}')"> Add Member</button>`;
       } else {
         // Determine live show timing
         var st = _showTimes(b);
@@ -8815,7 +8909,8 @@ function renderUserBookings() {
         if (checkedIn && showEnded) {
           // Show over + checked in  allow photo upload
           actionHtml = `<div style="font-size:.7rem;color:#4ade80;margin-bottom:.35rem;"> Checked in - Show ended</div>
-            <button class="proof-upload-btn" onclick="openProofModal('${b.id}','${(b.venue||'').replace(/'/g,"\\'")}')"> Upload Photo</button>`;
+            <button class="proof-upload-btn" onclick="openProofModal('${b.id}','${(b.venue||'').replace(/'/g,"\\'")}')"> Upload Photo</button>
+            <button class="proof-upload-btn" style="margin-top:.35rem;background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;" onclick="addMemberClaimFromRequest('${b.id}')"> Add Member</button>`;
         } else if (checkedIn && !showEnded) {
           // Checked in, show still ongoing - wait for it to end
           actionHtml = `<span class="proof-claimed-badge" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80;font-size:.72rem;"> Checked In - Show Ongoing</span>`;
@@ -9841,6 +9936,18 @@ async function saveVenue() {
       if (dayEl) dayEl.value = day;
     }
 
+    var duplicateVenue = findDuplicateVenue({ name:name, date:date, timeStart:timeStart, timeEnd:timeEnd }, editingVenueId);
+    if (duplicateVenue) {
+      var dupMsg = '"' + name + '" is already added for ' + formatDate(date) + ' at ' + formatVenueTimeRange({ timeStart:timeStart, timeEnd:timeEnd }) + '.';
+      if (errBox) {
+        errBox.textContent = dupMsg;
+        errBox.style.display = 'block';
+        errBox.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      }
+      showToast('', 'Duplicate Venue', dupMsg);
+      return;
+    }
+
     if (editingVenueId) {
       const v = venues.find(x=>x.id===editingVenueId);
       var oldVenueName = v ? v.name : '';
@@ -9931,13 +10038,7 @@ function parseAndPreviewCSV(text) {
   const dataRows = hasHeader ? records.slice(1) : records;
 
   csvParsedRows = [];
-  const normaliseVenueName = v => String(v || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  const venueImportKey = v => [
-    normaliseVenueName(v.name),
-    normalizeVenueDate(v.date || '') || String(v.date || '').trim(),
-    String(v.timeStart || '').trim(),
-    String(v.timeEnd || '').trim()
-  ].join('|');
+  const existingImportKeys = new Set((venues || []).map(venueDuplicateKey).filter(Boolean));
   const seenImportKeys = new Set();
 
   dataRows.forEach(colsRaw => {
@@ -10009,10 +10110,11 @@ function parseAndPreviewCSV(text) {
 
     // -- Validation --
     let rowStatus = 'new', errMsg = '';
-    const rowKey = venueImportKey({ name, date: isoDate, timeStart, timeEnd });
+    const rowKey = venueDuplicateKey({ name, date: isoDate, timeStart, timeEnd });
     if (!name)          { rowStatus='err'; errMsg='Missing Venue name'; }
     else if (!isoDate)  { rowStatus='err'; errMsg=`Unrecognised date: "${dateRaw}"`; }
     else if (!timeStart){ rowStatus='err'; errMsg=`Unrecognised slot: "${slotRaw}"`; }
+    else if (existingImportKeys.has(rowKey)) { rowStatus='dup'; errMsg='Already exists in saved venues'; }
     else if (seenImportKeys.has(rowKey)) { rowStatus='dup'; }
     else seenImportKeys.add(rowKey);
 
