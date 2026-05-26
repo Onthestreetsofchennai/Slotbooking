@@ -7595,7 +7595,7 @@ async function loadLeaderboard() {
   try {
     if (!members.length) { try { await loadMembers(); } catch(_){} }
     const rows = await neonSQL(
-      "SELECT c.member_name AS name, c.member_phone AS phone, SUM(COALESCE(c.points,1)) AS shows, SUM(CASE WHEN COALESCE(c.claim_type,'show')='show' THEN COALESCE(c.points,1) ELSE 0 END) AS show_count FROM claims c WHERE c.status='approved' AND c.member_name IS NOT NULL AND c.member_name <> '' GROUP BY c.member_name, c.member_phone ORDER BY shows DESC LIMIT 2000"
+      "SELECT c.member_name AS name, c.member_phone AS phone, SUM(COALESCE(c.points,1)) AS shows, COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show')='show') AS show_count FROM claims c WHERE c.status='approved' AND c.member_name IS NOT NULL AND c.member_name <> '' GROUP BY c.member_name, c.member_phone ORDER BY shows DESC LIMIT 2000"
     );
     _lbAllRows = rows.map(function(r){
       var zone = _memberZoneForRow(r);
@@ -7677,7 +7677,7 @@ async function checkShowMilestone() {
   var stored = parseInt(localStorage.getItem(key) || '-1', 10);
   try {
     var res = await neonSQL(
-      "SELECT COUNT(*) AS cnt FROM claims WHERE member_phone=$1 AND status='approved'",
+      "SELECT COUNT(*) AS cnt FROM claims WHERE member_phone=$1 AND status='approved' AND COALESCE(claim_type,'show')='show'",
       [_normPhone(memberPhone)]
     );
     var current = parseInt((res[0] && res[0].cnt) || 0, 10);
@@ -7826,7 +7826,7 @@ async function loadMemberStats() {
     _applyMyProfileHeader(memberAvatarUrl);
     // Personal approved claims - shows and volunteer separately
     var claims = await neonSQL(
-      "SELECT c.id, COALESCE(b.venue, c.reason, '-') AS venue, COALESCE(b.date,'') AS date, COALESCE(c.claim_type,'show') AS claim_type, c.reason " +
+      "SELECT c.id, COALESCE(b.venue, c.reason, '-') AS venue, COALESCE(b.date,'') AS date, COALESCE(c.claim_type,'show') AS claim_type, c.reason, COALESCE(c.points,1) AS points " +
       "FROM claims c LEFT JOIN bookings b ON b.id=c.booking_id " +
       "WHERE c.member_phone=$1 AND c.status='approved' ORDER BY c.created_at DESC",
       [normP]
@@ -7834,12 +7834,13 @@ async function loadMemberStats() {
     var showClaims  = claims.filter(function(c){ return (c.claim_type||'show')==='show'; });
     var bonusClaims = claims.filter(function(c){ return c.claim_type==='volunteer'; });
     var count = showClaims.length;
-    var total = claims.length;
+    var total = claims.reduce(function(sum, c){ return sum + (Number(c.points) || 0); }, 0);
+    total = Math.round(total * 100) / 100;
     if (msShows)  msShows.textContent  = count;
     if (msPoints) msPoints.textContent = total;
     // Rank: count how many people have MORE approved claims
     var rankRes = await neonSQL(
-      "SELECT COUNT(DISTINCT member_phone) AS above FROM (SELECT member_phone, COUNT(*) AS n FROM claims WHERE status='approved' GROUP BY member_phone HAVING COUNT(*) > $1) sub",
+      "SELECT COUNT(*) AS above FROM (SELECT member_phone, SUM(COALESCE(points,1)) AS n FROM claims WHERE status='approved' GROUP BY member_phone HAVING SUM(COALESCE(points,1)) > $1) sub",
       [total]
     );
     var above = parseInt((rankRes[0] && rankRes[0].above) || 0, 10);
@@ -7862,7 +7863,7 @@ async function loadMemberStats() {
           return '<div class="my-perf-row">' +
             '<div class="my-perf-venue">' + label + badge + '</div>' +
             '<div class="my-perf-date">' + dateTxt + '</div>' +
-            '<div class="my-perf-pt">+1 pt</div>' +
+            '<div class="my-perf-pt">+' + (Math.round((Number(c.points)||1) * 100) / 100) + ' pt</div>' +
             '</div>';
         }).join('');
       }
@@ -7922,6 +7923,120 @@ function venueMapsUrl(venue, fallbackName) {
   return googleMapsSearchUrl((venue && venue.name) || fallbackName || '');
 }
 
+const CHECKIN_RADIUS_METERS = 100;
+const CHECKIN_OPEN_MINUTES = 60;
+const CHECKIN_LATE_GRACE_MINUTES = 10;
+const SHOW_FULL_POINTS = 4;
+const SHOW_LATE_POINTS = 2;
+
+function extractLatLngFromText(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return null;
+  var decoded = raw;
+  try { decoded = decodeURIComponent(raw); } catch(_) {}
+  var patterns = [
+    /@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/,
+    /[?&](?:q|query|ll)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i,
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/i,
+    /^\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\s*$/
+  ];
+  for (var i = 0; i < patterns.length; i++) {
+    var m = decoded.match(patterns[i]);
+    if (m) {
+      var lat = parseFloat(m[1]);
+      var lng = parseFloat(m[2]);
+      if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+        return { lat: lat, lng: lng };
+      }
+    }
+  }
+  return null;
+}
+
+function venueLatLng(venue) {
+  if (!venue) return null;
+  return extractLatLngFromText(venue.mapUrl) ||
+         extractLatLngFromText(venue.landmark) ||
+         extractLatLngFromText(venue.location);
+}
+
+function distanceMeters(a, b) {
+  if (!a || !b) return null;
+  var R = 6371000;
+  var toRad = function(n){ return n * Math.PI / 180; };
+  var dLat = toRad(b.lat - a.lat);
+  var dLng = toRad(b.lng - a.lng);
+  var lat1 = toRad(a.lat);
+  var lat2 = toRad(b.lat);
+  var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1) * Math.cos(lat2) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function formatDistanceMeters(meters) {
+  if (!isFinite(meters)) return '';
+  return meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters) + ' m';
+}
+
+function checkInStateForBooking(booking, now) {
+  now = now || new Date();
+  var st = _showTimes(booking);
+  if (!st || !st.start || !st.end) {
+    return { can: false, reason: 'Show timing is missing. Please contact admin.' };
+  }
+  var openAt = new Date(st.start.getTime() - CHECKIN_OPEN_MINUTES * 60000);
+  var lateAt = new Date(st.start.getTime() + CHECKIN_LATE_GRACE_MINUTES * 60000);
+  if (now < openAt) {
+    return {
+      can: false,
+      reason: 'Check-in opens 1 hour before the show.',
+      openAt: openAt
+    };
+  }
+  if (now > st.end) {
+    return {
+      can: false,
+      reason: 'Show ended. Please contact admin if check-in was missed.',
+      ended: true
+    };
+  }
+  return {
+    can: true,
+    late: now > lateAt,
+    reason: now > lateAt ? 'Late check-in: total show points will be reduced.' : ''
+  };
+}
+
+function bookingPointPool(booking) {
+  var st = _showTimes(booking);
+  if (!booking || !booking.checkinAt || !st || !st.start) return SHOW_FULL_POINTS;
+  var lateAt = new Date(st.start.getTime() + CHECKIN_LATE_GRACE_MINUTES * 60000);
+  var checkedAt = new Date(booking.checkinAt);
+  return checkedAt > lateAt ? SHOW_LATE_POINTS : SHOW_FULL_POINTS;
+}
+
+function splitShowPoints(totalPoints, performerCount) {
+  var count = Math.max(1, Number(performerCount) || 1);
+  return Math.round((Number(totalPoints || SHOW_FULL_POINTS) / count) * 100) / 100;
+}
+
+async function rebalanceApprovedShowClaims(bookingId, booking, countPendingToo) {
+  var rows = await neonSQL(
+    "SELECT id,status FROM claims WHERE booking_id=$1 AND COALESCE(claim_type,'show')='show' AND status IN ('pending','approved')",
+    [String(bookingId)]
+  );
+  var approvedRows = (rows || []).filter(function(r){ return r.status === 'approved'; });
+  var performerCount = countPendingToo ? Math.max(1, (rows || []).length) : Math.max(1, approvedRows.length);
+  var totalPool = bookingPointPool(booking);
+  var pts = splitShowPoints(totalPool, performerCount);
+  await neonSQL(
+    "UPDATE claims SET points=$2 WHERE booking_id=$1 AND COALESCE(claim_type,'show')='show' AND status='approved'",
+    [String(bookingId), pts]
+  );
+  return { points: pts, totalPool: totalPool, performerCount: performerCount };
+}
+
 function openVenueInMapsForBooking(bookingId) {
   var b = myBookings.find(function(x){ return x.id === bookingId; }) ||
           allBookings.find(function(x){ return x.id === bookingId; });
@@ -7961,24 +8076,43 @@ async function checkInToShow(bookingId) {
   var b = myBookings.find(function(x){ return x.id === bookingId; });
   if (!b) return;
   if (b.checkinAt) return;
-  var now = new Date().toISOString();
+  var liveNow = new Date();
+  var state = checkInStateForBooking(b, liveNow);
+  if (!state.can) {
+    showToast('', 'Check-in Not Open', state.reason || 'Check-in is not available right now.');
+    return;
+  }
+  var venue = findVenueForBooking(b);
+  var target = venueLatLng(venue);
+  if (!target) {
+    showToast('', 'Location Needed', 'This venue needs an exact Google Maps location before check-in can work.');
+    return;
+  }
+  var now = liveNow.toISOString();
   try {
     showToast('', 'Recording Arrival', 'Please allow location access if your phone asks.');
     var pos = await getCurrentPositionForCheckIn();
-    var updates = { checkin_at: now };
-    if (pos) {
-      updates.checkin_lat = pos.lat;
-      updates.checkin_lng = pos.lng;
-      updates.checkin_accuracy = pos.accuracy || null;
-      updates.checkin_map_url = buildCheckinMapUrl(pos.lat, pos.lng);
+    if (!pos) {
+      showToast('', 'Location Required', 'Please allow location access to check in from the venue.');
+      return;
     }
+    var distance = distanceMeters({ lat: pos.lat, lng: pos.lng }, target);
+    if (distance == null || distance > CHECKIN_RADIUS_METERS) {
+      showToast('', 'Not Near Venue', 'You are ' + formatDistanceMeters(distance) + ' away. Please check in within 100 m of the performance location.');
+      return;
+    }
+    var updates = { checkin_at: now };
+    updates.checkin_lat = pos.lat;
+    updates.checkin_lng = pos.lng;
+    updates.checkin_accuracy = pos.accuracy || null;
+    updates.checkin_map_url = buildCheckinMapUrl(pos.lat, pos.lng);
     await dbPatch('bookings', bookingId, updates);
     Object.assign(b, {
       checkinAt: now,
-      checkinLat: pos ? pos.lat : null,
-      checkinLng: pos ? pos.lng : null,
-      checkinAccuracy: pos ? pos.accuracy : null,
-      checkinMapUrl: pos ? updates.checkin_map_url : ''
+      checkinLat: pos.lat,
+      checkinLng: pos.lng,
+      checkinAccuracy: pos.accuracy || null,
+      checkinMapUrl: updates.checkin_map_url
     });
     // Update allBookings cache too
     var ab = allBookings.find(function(x){ return x.id === bookingId; });
@@ -7992,7 +8126,7 @@ async function checkInToShow(bookingId) {
     notifyAdminCheckIn(ab || b);
     renderUserBookings();
     try { filterTable(); updateAdminStats(); } catch(_) {}
-    showToast('','Checked In!', pos ? 'Your arrival, time and location have been recorded.' : 'Your arrival time is recorded. Location was not shared.');
+    showToast('','Checked In!', state.late ? 'Late arrival recorded. Total show points will be reduced.' : 'Your arrival, time and location have been recorded.');
   } catch(e) {
     showToast('','Error','Could not record check-in. Please try again.');
   }
@@ -8904,7 +9038,7 @@ function renderUserBookings() {
         var _now = new Date();
         var showEnded  = st ? _now > st.end  : isPast;
         var checkedIn  = !!b.checkinAt;
-        var isShowDay = b.date === todayIsoLocal();
+        var checkState = checkInStateForBooking(b, _now);
 
         if (checkedIn && showEnded) {
           // Show over + checked in  allow photo upload
@@ -8914,23 +9048,26 @@ function renderUserBookings() {
         } else if (checkedIn && !showEnded) {
           // Checked in, show still ongoing - wait for it to end
           actionHtml = `<span class="proof-claimed-badge" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80;font-size:.72rem;"> Checked In - Show Ongoing</span>`;
-        } else if (showEnded && !checkedIn && isShowDay) {
-          // Show has ended today but the member can still mark arrival, then upload proof.
-          actionHtml = `<button class="proof-upload-btn" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80;" data-checkin="${b.id}"> I Have Reached</button>
-            <div style="font-size:.68rem;color:var(--muted);margin-top:.3rem;">Show ended - check in to upload photo</div>`;
         } else if (showEnded && !checkedIn) {
           actionHtml = `<span style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:.35rem;"> No check-in recorded</span>
+            <div style="font-size:.68rem;color:var(--muted);margin-top:.3rem;">Show ended - contact admin if check-in was missed</div>
             <button class="bi-cancel-btn" onclick="dismissRequest('${b.id}')" title="Remove from list" style="opacity:.65;">x Clear</button>`;
-        } else if (!isShowDay) {
+        } else if (!checkState.can) {
           actionHtml = `<span class="proof-claimed-badge" style="background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.28);color:#70BAF4;font-size:.72rem;"> Upcoming Show</span>`;
+          if (checkState.reason) {
+            actionHtml += `<div style="font-size:.68rem;color:var(--muted);margin-top:.3rem;">${otsEscapeHtml(checkState.reason)}</div>`;
+          }
           if (canCancel) {
             actionHtml += ` <button class="bi-cancel-btn bi-cancel-confirm" onclick="cancelMyRequest('${b.id}','confirmed')" title="Cancel confirmed booking" style="margin-top:.35rem;">Cancel</button>`;
           } else if (nearDate) {
             actionHtml += ' ' + _adminContactHtml('Contact Admin', 'Online cancellation closes 2 days before the show');
           }
         } else {
-          // Show day - prompt check-in
+          // Check-in window is open.
           actionHtml = `<button class="proof-upload-btn" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80;" data-checkin="${b.id}"> I Have Reached</button>`;
+          if (checkState.late) {
+            actionHtml += `<div style="font-size:.68rem;color:var(--orange);margin-top:.3rem;">Late check-in - total show points will be reduced</div>`;
+          }
           if (canCancel) {
             actionHtml += ` <button class="bi-cancel-btn bi-cancel-confirm" onclick="cancelMyRequest('${b.id}','confirmed')" title="Cancel confirmed booking" style="margin-top:.35rem;">Cancel</button>`;
           } else if (nearDate) {
@@ -9347,17 +9484,17 @@ async function approveClaim(claimId) {
   if (!claim) { showToast('','Error','Claim not found.'); return; }
   var bookingId  = claim.booking_id;
   var memberName = claim.member_name || claim.member_phone || 'Member';
-  // Determine points: check if performer checked in late (after show start)
   var bk = allBookings.find(function(x){ return String(x.id) === String(bookingId); });
-  var vn = bk ? venues.find(function(v){ return v.id === bk.venueId; }) : null;
-  var pts = 1;
-  if (bk && bk.checkinAt && vn && vn.timeStart && bk.date) {
-    var showStart  = new Date(bk.date + 'T' + vn.timeStart + ':00');
-    var checkinTime = new Date(bk.checkinAt);
-    if (checkinTime > showStart) { pts = 0.5; } // late arrival  half point
-  }
   try {
+    var groupClaims = await neonSQL(
+      "SELECT id,status FROM claims WHERE booking_id=$1 AND COALESCE(claim_type,'show')='show' AND status IN ('pending','approved')",
+      [bookingId]
+    );
+    var performerCount = Math.max(1, (groupClaims || []).length);
+    var totalPool = bookingPointPool(bk);
+    var pts = splitShowPoints(totalPool, performerCount);
     await neonSQL("UPDATE claims SET status='approved', points=$2 WHERE id=$1", [claimId, pts]);
+    await rebalanceApprovedShowClaims(bookingId, bk, true);
     // Mark the booking as proof_claimed=true so the member sees " Points Claimed"
     await dbPatch('bookings', bookingId, { proof_claimed: true });
     // Update local allBookings cache
@@ -9367,7 +9504,7 @@ async function approveClaim(claimId) {
     claim.status = 'approved';
     _renderAdminClaims();
     _updateClaimsBadge();
-    var pointNote = pts < 1 ? ' ( point - late arrival)' : '';
+    var pointNote = ' (' + pts + ' point each from ' + totalPool + ' total points split by ' + performerCount + ')';
     notifyMemberUpdate({
       updateType: 'claim',
       status: 'approved',
@@ -9380,7 +9517,7 @@ async function approveClaim(claimId) {
       points: pts
     });
     logAdminAction('approve_claim', memberName + ' for booking #' + bookingId + pointNote).catch(function(){});
-    showToast('','Claim Approved', memberName + ' gets ' + (pts < 1 ? ' point (late arrival)' : 'a full point') + ' on the leaderboard.');
+    showToast('','Claim Approved', memberName + ' gets ' + pts + ' point(s). Total slot pool: ' + totalPool + ' split across ' + performerCount + ' performer(s).');
   } catch(e) {
     showToast('','Error','Could not approve claim: '+(e&&e.message));
     console.error('[OTS] approveClaim:', e);
@@ -10647,8 +10784,8 @@ async function createEmergencyShowCredit(data) {
     checkin_at: booking.checkinAt
   }]);
   await neonSQL(
-    "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','show',$4,1)",
-    [booking.id, _normPhone(booking.phone || '') || booking.phone || '', booking.name, booking.notes]
+    "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','show',$4,$5)",
+    [booking.id, _normPhone(booking.phone || '') || booking.phone || '', booking.name, booking.notes, SHOW_FULL_POINTS]
   );
   allBookings.unshift(booking);
   saveLocal();
@@ -10663,14 +10800,14 @@ async function createEmergencyShowCredit(data) {
     bookingId: booking.id,
     venue: booking.venue,
     date: booking.date,
-    points: '1',
+    points: String(SHOW_FULL_POINTS),
     reason: 'show completed',
     phone: booking.phone,
     email: booking.email,
     memberName: booking.name
   });
   logAdminAction('emergency_show_credit', booking.name + ' @ ' + booking.venue + ' #' + booking.id).catch(function(){});
-  showToast('', 'Show Credit Added', '1 show count and 1 point added for ' + booking.name + '.');
+  showToast('', 'Show Credit Added', '1 show count and ' + SHOW_FULL_POINTS + ' point(s) added for ' + booking.name + '.');
 }
 
 async function createEmergencyUploadAccess(data) {
@@ -10866,8 +11003,8 @@ async function adminGrantShowPoint(id, mode) {
     }
   }
   var confirmText = isTeamMember
-    ? ('Add 1 show count + 1 point for ' + targetName + ' on this booking?')
-    : 'Manually grant/re-approve 1 show point/show count for this booking member? Use only for verified completed shows.';
+    ? ('Add show credit for ' + targetName + ' on this booking? Approved performers will share the 4-point slot pool.')
+    : 'Manually grant/re-approve show credit for this booking member? Approved performers will share the 4-point slot pool.';
   if (!confirm(confirmText)) return;
   try {
     var existing = await neonSQL(
@@ -10875,13 +11012,14 @@ async function adminGrantShowPoint(id, mode) {
       [String(id), targetPhone || '']
     );
     if (existing && existing.length) {
-      await neonSQL("UPDATE claims SET status='approved', points=1, reason='Admin manual show credit' WHERE id=$1", [existing[0].id]);
+      await neonSQL("UPDATE claims SET status='approved', reason='Admin manual show credit' WHERE id=$1", [existing[0].id]);
     } else {
       await neonSQL(
-        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','show','Admin manual show credit',1)",
+        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','show','Admin manual show credit',0)",
         [String(id), targetPhone || '', targetName]
       );
     }
+    var balance = await rebalanceApprovedShowClaims(id, b, false);
     await dbPatch('bookings', id, { proof_claimed: true });
     b.proofClaimed = true;
     await adminRestoreClearedRequest(id, true);
@@ -10896,14 +11034,14 @@ async function adminGrantShowPoint(id, mode) {
       bookingId: id,
       venue: b.venue || '',
       date: b.date || '',
-      points: '1',
+      points: String(balance.points),
       reason: 'show completed',
       phone: targetPhone || '',
       email: targetEmail || '',
       memberName: targetName
     });
     logAdminAction('manual_show_point', targetName + ' @ ' + (b.venue || '-') + ' #' + id).catch(function(){});
-    showToast('', 'Point Granted', 'Show count and point are added for ' + targetName + '.');
+    showToast('', 'Point Granted', targetName + ' now gets ' + balance.points + ' point(s). Approved performers share ' + balance.totalPool + ' total slot points.');
   } catch(e) {
     console.error('[OTS] manual show point:', e);
     showToast('', 'Failed', 'Could not grant manual show point.');
