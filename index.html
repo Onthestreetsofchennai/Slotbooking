@@ -4805,6 +4805,7 @@ textarea{
         </div>
         <div id="profCompHint" style="font-size:.68rem;color:var(--muted);margin-top:.35rem;text-align:right;min-height:1em;"></div>
       </div>
+      <button class="proof-upload-btn" onclick="openSharePointsModal()" style="width:min(340px,100%);background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;">Share Points</button>
     </div>
 
     <!-- BASIC INFO -->
@@ -5506,6 +5507,33 @@ textarea{
   </div>
 </div>
 
+<div class="modal-overlay" id="editPerformersModal" onclick="if(event.target===this)closeEditPerformersModal()">
+  <div class="modal modal-scroll" style="max-width:460px;">
+    <button class="admin-modal-close" type="button" onclick="closeEditPerformersModal()" aria-label="Close performers editor">&times;</button>
+    <div class="modal-title">Edit Type / Members</div>
+    <div class="modal-sub">You can update the performance type and performers until the show end time.</div>
+    <label class="form-label">Performance Type</label>
+    <select class="form-input" id="edit-perf-type">
+      <option value="">Select type</option>
+      <option value="Solo">Solo</option>
+      <option value="2 Piece">2 Piece</option>
+      <option value="3 Piece">3 Piece</option>
+      <option value="4 Piece">4 Piece</option>
+    </select>
+    <label class="form-label">Add Member Mobile Number</label>
+    <div style="display:flex;gap:.5rem;margin-bottom:.8rem;">
+      <input id="edit-perf-phone" type="tel" class="form-input" placeholder="10-digit mobile number" style="margin-bottom:0;" oninput="this.value=this.value.replace(/[^0-9+]/g,'')">
+      <button type="button" onclick="addEditPerformer()" style="background:rgba(112,186,244,.15);border:1px solid rgba(112,186,244,.3);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:700;padding:.55rem .9rem;border-radius:4px;cursor:pointer;white-space:nowrap;">+ Add</button>
+    </div>
+    <div id="edit-perf-list" style="display:flex;flex-direction:column;gap:.45rem;"></div>
+    <div id="edit-perf-status" style="font-size:.78rem;color:var(--muted);margin-top:.8rem;"></div>
+    <div class="modal-actions sticky-actions">
+      <button class="btn-cancel" type="button" onclick="closeEditPerformersModal()">Cancel</button>
+      <button class="btn-confirm" id="edit-perf-save" type="button" onclick="saveEditPerformers()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="sharePointsModal" onclick="if(event.target===this)closeSharePointsModal()">
   <div class="modal modal-scroll" style="max-width:430px;">
     <button class="admin-modal-close" type="button" onclick="closeSharePointsModal()" aria-label="Close share points">&times;</button>
@@ -5760,6 +5788,10 @@ function restoreMyBookingsFromServer() {
     } else if (existing.status !== ab.status) {
       existing.status = ab.status;
       changed = true;
+    } else if (existing.type !== ab.type || JSON.stringify(parseBookingPerformers(existing.performers)) !== JSON.stringify(parseBookingPerformers(ab.performers))) {
+      existing.type = ab.type;
+      existing.performers = ab.performers;
+      changed = true;
     }
   });
   if (changed) {
@@ -5783,12 +5815,13 @@ async function fetchMyBookingsLive() {
   try {
     // Targeted SQL: only fetch THIS member's bookings (phone last-10 or email match)
     var rows = await neonSQL(
-      'SELECT id, venue_id, venue, date, type, name, booked_by, phone, email, notes, visibility, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url ' +
+      'SELECT id, venue_id, venue, date, type, name, booked_by, phone, email, notes, visibility, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url, performers ' +
       'FROM bookings ' +
       'WHERE RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10) = $1 ' +
       '   OR LOWER(TRIM(email)) = $2 ' +
+      '   OR performers LIKE $3 ' +
       'ORDER BY created_at DESC',
-      [myPhone || '', myEmail || '']
+      [myPhone || '', myEmail || '', '%' + (myPhone || '__NO_PHONE__') + '%']
     );
     var changed = false;
     rows.forEach(function(b) {
@@ -5797,6 +5830,7 @@ async function fetchMyBookingsLive() {
       date: b.date||'', type: b.type||'', name: b.name||'',
       bookedBy: b.booked_by||'',
       phone: b.phone||'', email: b.email||'', notes: b.notes||'',
+      performers: parseBookingPerformers(b.performers),
       visibility: normalizeTitleCase(b.visibility, 'Public'),
         status: b.status||'pending', createdAt: b.created_at||'',
         proofUrl: b.proof_url||'', proofClaimed: !!b.proof_claimed,
@@ -5821,6 +5855,7 @@ async function fetchMyBookingsLive() {
         var updated = false;
         if (existing.status !== sb.status)           { existing.status       = sb.status;       updated = true; }
         if (sb.bookedBy && existing.bookedBy !== sb.bookedBy) { existing.bookedBy = sb.bookedBy; updated = true; }
+        if (JSON.stringify(parseBookingPerformers(existing.performers)) !== JSON.stringify(parseBookingPerformers(sb.performers))) { existing.performers = sb.performers; updated = true; }
         if (existing.proofClaimed !== sb.proofClaimed){ existing.proofClaimed = sb.proofClaimed; updated = true; }
         if (sb.proofUrl && !existing.proofUrl)        { existing.proofUrl    = sb.proofUrl;      updated = true; }
         if (sb.checkinAt && !existing.checkinAt)      { existing.checkinAt   = sb.checkinAt;     updated = true; }
@@ -6223,6 +6258,7 @@ async function saveRemoteNow(showToastOnFail) {
     booked_by:b.bookedBy||b.booked_by||'',
     phone:b.phone||'', email:b.email||'',
     notes:b.notes||'',
+    performers:stringifyBookingPerformers(b.performers || []),
     visibility:b.visibility || (isBookingPrivate(b) ? 'Private' : 'Public'),
     status:b.status||'pending', created_at:b.createdAt||new Date().toISOString(),
     push_token:b.pushToken||''
@@ -6431,6 +6467,46 @@ function bookingStartTimeMs(b) {
 function getBookingPersonName(b) {
   return String((b && (b.bookedBy || b.booked_by)) || '').trim();
 }
+
+function parseBookingPerformers(value) {
+  if (Array.isArray(value)) return value.map(function(m){
+    return { phone:_normPhone(m.phone || ''), name:String(m.name || '').trim() };
+  }).filter(function(m){ return m.phone; });
+  try {
+    var parsed = JSON.parse(value || '[]');
+    return parseBookingPerformers(parsed);
+  } catch(e) {
+    return [];
+  }
+}
+
+function stringifyBookingPerformers(list) {
+  var seen = {};
+  var out = [];
+  (list || []).forEach(function(m) {
+    var phone = _normPhone(m && m.phone || '');
+    if (!phone || seen[phone]) return;
+    seen[phone] = true;
+    out.push({ phone: phone, name: String((m && m.name) || '').trim() });
+  });
+  return JSON.stringify(out);
+}
+
+function bookingPerformersText(b) {
+  var list = parseBookingPerformers(b && b.performers);
+  if (!list.length) return '';
+  return list.map(function(m){ return m.name || m.phone; }).join(', ');
+}
+
+function bookingShowEnded(b) {
+  var st = _showTimes(b);
+  if (st && st.end) return new Date() > st.end;
+  return _daysUntil(b && b.date) < 0;
+}
+
+function canEditBookingPerformers(b) {
+  return !!(b && (b.status === 'pending' || b.status === 'confirmed') && !bookingShowEnded(b) && !b.proofUrl && !b.proofClaimed);
+}
 function mapVenueRows(vRows) {
   return (vRows || []).map(function(v){ return {
     id:v.id, name:v.name, day:v.day||'', date:normalizeVenueDate(v.date),
@@ -6449,6 +6525,7 @@ function mapBookingRows(bRows) {
     date:b.date||'', type:b.type||'', name:b.name||'',
     bookedBy:b.booked_by||b.bookedBy||'',
     phone:b.phone||'', email:b.email||'', price:b.price||0, notes:b.notes||'',
+    performers:parseBookingPerformers(b.performers),
     visibility:normalizeTitleCase(b.visibility, 'Public'),
     status:b.status||'pending', createdAt:b.created_at||'',
     proofUrl:b.proof_url||'', proofClaimed:!!b.proof_claimed,
@@ -6517,7 +6594,7 @@ async function refreshLiveCoreDataNow(opts) {
   showSyncStatus(' Live venues updated','var(--green)');
 
   const optionalResults = await Promise.allSettled([
-    neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000'),
+    neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url,performers FROM bookings ORDER BY created_at DESC LIMIT 1000'),
     neonSQL('SELECT key,value FROM settings')
   ]);
   if (optionalResults[0].status === 'fulfilled') {
@@ -7441,7 +7518,7 @@ function startAdminPolling() {
   _adminPollTimer = setInterval(function() {
     if (!adminLoggedIn) return;
     // Lightweight poll - only fetch bookings (not venues/gallery)
-    neonSQL('SELECT id, venue, venue_id, date, name, booked_by, type, visibility, status, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url, created_at FROM bookings ORDER BY created_at DESC LIMIT 100')
+    neonSQL('SELECT id, venue, venue_id, date, name, booked_by, type, visibility, status, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url, performers, created_at FROM bookings ORDER BY created_at DESC LIMIT 100')
       .then(function(rows){ return rows || []; })
       .then(function(rows) {
         var fresh = (rows||[]).map(function(b){ return {
@@ -7452,6 +7529,7 @@ function startAdminPolling() {
           proofUrl: b.proof_url||'', proofClaimed: !!b.proof_claimed, checkinAt: b.checkin_at||null,
           checkinLat: b.checkin_lat||null, checkinLng: b.checkin_lng||null,
           checkinAccuracy: b.checkin_accuracy||null, checkinMapUrl: b.checkin_map_url||'',
+          performers: parseBookingPerformers(b.performers),
           createdAt: b.created_at||''
         }; });
         // Detect changes before deciding whether to re-render
@@ -7468,6 +7546,9 @@ function startAdminPolling() {
             changed = true;
           } else if (f.bookedBy && existing.bookedBy !== f.bookedBy) {
             existing.bookedBy = f.bookedBy;
+            changed = true;
+          } else if (JSON.stringify(parseBookingPerformers(existing.performers)) !== JSON.stringify(parseBookingPerformers(f.performers))) {
+            existing.performers = f.performers;
             changed = true;
           } else if (existing.visibility !== f.visibility) {
             existing.visibility = f.visibility;
@@ -8279,7 +8360,9 @@ function openProofModal(bookingId, venueName) {
   _proofFileData  = null;
   _proofPreparing = false;
   _proofSubmitting = false;
-  _sharedMembers  = [];
+  var booking = myBookings.find(function(x){ return x.id === bookingId; }) || allBookings.find(function(x){ return x.id === bookingId; });
+  var ownPhone = _normPhone(memberPhone || (booking && booking.phone) || '');
+  _sharedMembers  = parseBookingPerformers(booking && booking.performers).filter(function(m){ return _normPhone(m.phone) && _normPhone(m.phone) !== ownPhone; });
   var preview   = document.getElementById('proofPreview');
   var fileInput = document.getElementById('proofFileInput');
   var submitBtn = document.getElementById('proofSubmitBtn');
@@ -8320,6 +8403,121 @@ function addSharedMember() {
   _sharedMembers.push({ phone: normP, name: mem ? mem.name : '' });
   inp.value = '';
   _renderSharedList();
+}
+
+var _editPerformersBookingId = null;
+var _editPerformersList = [];
+
+function openEditPerformersModal(bookingId) {
+  var b = myBookings.find(function(x){ return x.id === bookingId; }) || allBookings.find(function(x){ return x.id === bookingId; });
+  if (!b) return;
+  if (!canEditBookingPerformers(b)) {
+    showToast('', 'Editing Closed', 'Performer details can be edited only before the show ends and before photo upload.');
+    return;
+  }
+  _editPerformersBookingId = bookingId;
+  _editPerformersList = parseBookingPerformers(b.performers);
+  var ownPhone = _normPhone(b.phone || memberPhone || '');
+  if (ownPhone && !_editPerformersList.some(function(m){ return _normPhone(m.phone) === ownPhone; })) {
+    _editPerformersList.unshift({ phone: ownPhone, name: b.name || memberName || getBookingPersonName(b) || '' });
+  }
+  var typeEl = document.getElementById('edit-perf-type');
+  var phoneEl = document.getElementById('edit-perf-phone');
+  var status = document.getElementById('edit-perf-status');
+  if (typeEl) typeEl.value = b.type || '';
+  if (phoneEl) phoneEl.value = '';
+  if (status) { status.textContent = 'You can edit this until the show end time.'; status.style.color = 'var(--muted)'; }
+  renderEditPerformersList();
+  var modal = document.getElementById('editPerformersModal');
+  if (modal) modal.classList.add('show');
+}
+
+function closeEditPerformersModal() {
+  var modal = document.getElementById('editPerformersModal');
+  if (modal) modal.classList.remove('show');
+  _editPerformersBookingId = null;
+  _editPerformersList = [];
+}
+
+function renderEditPerformersList() {
+  var el = document.getElementById('edit-perf-list');
+  if (!el) return;
+  if (!_editPerformersList.length) {
+    el.innerHTML = '<div style="font-size:.75rem;color:var(--muted);">No performers added yet.</div>';
+    return;
+  }
+  var booking = myBookings.find(function(x){ return x.id === _editPerformersBookingId; }) || {};
+  var ownerPhone = _normPhone(booking.phone || memberPhone || '');
+  el.innerHTML = _editPerformersList.map(function(m, i) {
+    var isOwner = ownerPhone && _normPhone(m.phone) === ownerPhone;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:4px;padding:.55rem .7rem;">' +
+      '<div><div style="font-size:.82rem;font-weight:700;">' + otsEscapeHtml(m.name || 'Member') + (isOwner ? ' <span style="font-size:.62rem;color:var(--orange);">BOOKER</span>' : '') + '</div>' +
+      '<div style="font-size:.7rem;color:var(--muted);">' + otsEscapeHtml(m.phone || '') + '</div></div>' +
+      (isOwner ? '<span style="font-size:.68rem;color:var(--muted);">Required</span>' : '<button type="button" onclick="removeEditPerformer(' + i + ')" style="background:transparent;border:1px solid rgba(220,38,38,.35);color:#ff7b7b;font-size:.7rem;font-weight:800;padding:.3rem .55rem;border-radius:3px;">Remove</button>') +
+    '</div>';
+  }).join('');
+}
+
+async function addEditPerformer() {
+  var inp = document.getElementById('edit-perf-phone');
+  var status = document.getElementById('edit-perf-status');
+  var phone = _normPhone((inp && inp.value) || '');
+  if (!phone) { if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Enter a valid member mobile number.'; } return; }
+  if (_editPerformersList.some(function(m){ return _normPhone(m.phone) === phone; })) {
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'That member is already added.'; }
+    if (inp) inp.value = '';
+    return;
+  }
+  if (status) { status.style.color = 'var(--muted)'; status.textContent = 'Checking member...'; }
+  try {
+    var member = await findMemberForClaim(phone);
+    _editPerformersList.push({ phone: phone, name: member ? member.name || '' : '' });
+    if (inp) inp.value = '';
+    if (status) { status.style.color = 'var(--muted)'; status.textContent = member ? 'Member added.' : 'Phone added. Admin can verify if needed.'; }
+    renderEditPerformersList();
+  } catch(e) {
+    _editPerformersList.push({ phone: phone, name: '' });
+    if (inp) inp.value = '';
+    renderEditPerformersList();
+  }
+}
+
+function removeEditPerformer(index) {
+  _editPerformersList.splice(index, 1);
+  renderEditPerformersList();
+}
+
+async function saveEditPerformers() {
+  var b = myBookings.find(function(x){ return x.id === _editPerformersBookingId; }) || allBookings.find(function(x){ return x.id === _editPerformersBookingId; });
+  var status = document.getElementById('edit-perf-status');
+  var btn = document.getElementById('edit-perf-save');
+  if (!b) return;
+  if (!canEditBookingPerformers(b)) {
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Editing closed because the show ended or proof was uploaded.'; }
+    return;
+  }
+  var type = (document.getElementById('edit-perf-type') && document.getElementById('edit-perf-type').value) || '';
+  if (!type) { if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Select Solo, 2 Piece, 3 Piece or 4 Piece.'; } return; }
+  if (!_editPerformersList.length) { if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Add at least one performer.'; } return; }
+  var performers = parseBookingPerformers(_editPerformersList);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+  try {
+    await dbPatch('bookings', b.id, { type: type, performers: stringifyBookingPerformers(performers) });
+    [myBookings, allBookings].forEach(function(arr) {
+      var item = arr.find(function(x){ return x.id === b.id; });
+      if (item) { item.type = type; item.performers = performers; }
+    });
+    saveMyBookings(); saveLocal();
+    renderUserBookings();
+    try { filterTable(); renderGigCalendar(); } catch(_) {}
+    closeEditPerformersModal();
+    showToast('', 'Updated', 'Performance type and members updated.');
+  } catch(e) {
+    console.error('[OTS] save performers:', e);
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Could not save. Please try again.'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
+  }
 }
 
 function _renderSharedList() {
@@ -8710,7 +8908,7 @@ function dismissNotif(id) {
 // ========================================
 // DB MIGRATIONS (run once on startup)
 // ========================================
-const MIGRATION_VERSION = '2026-05-26-point-share-1';
+const MIGRATION_VERSION = '2026-05-26-booking-performers-1';
 async function runMigrations(force) {
   try { if (!force && localStorage.getItem('ots_migration_version') === MIGRATION_VERSION) return; } catch(e) {}
   const run = async (sql) => { try { await neonSQL(sql); } catch(e) { console.warn('Migration skipped:', e && (e.message||e)); } };
@@ -8725,6 +8923,7 @@ async function runMigrations(force) {
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS visibility    TEXT    DEFAULT 'Public'");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS proof_url     TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS proof_claimed BOOLEAN DEFAULT false");
+  await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS performers TEXT DEFAULT '[]'");
   await run("CREATE TABLE IF NOT EXISTS claims (id SERIAL PRIMARY KEY, booking_id TEXT NOT NULL, member_phone TEXT NOT NULL, member_name TEXT DEFAULT '', status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW())");
   await run("ALTER TABLE claims ALTER COLUMN booking_id TYPE TEXT USING booking_id::TEXT");
   await run("CREATE TABLE IF NOT EXISTS admins (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT DEFAULT 'admin', active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())");
@@ -8959,6 +9158,7 @@ async function submitBooking() {
     bookedBy:  bookedBy,
     email:     formEmail || memberEmail || '',
     phone:     formPhone || memberPhone || '',
+    performers: [{ phone: _normPhone(formPhone || memberPhone || ''), name: document.getElementById('inp-band').value.trim() || memberName || bookedBy }],
     notes:     document.getElementById('inp-notes').value.trim(),
     price:     0,
     visibility: venue.visibility || 'Public',
@@ -8986,6 +9186,7 @@ async function submitBooking() {
       date: b.date, type: b.type, name: b.name,
       booked_by: b.bookedBy,
       phone: b.phone, email: b.email, notes: b.notes,
+      performers: stringifyBookingPerformers(b.performers),
       visibility: b.visibility || 'Public',
       status: b.status, created_at: b.createdAt,
       push_token: b.pushToken || _nativePushToken || ''
@@ -9164,6 +9365,9 @@ function renderUserBookings() {
     var actionHtml = '';
     if (b.status === 'pending') {
       actionHtml = `<button class="bi-edit-name-btn" onclick="editPendingBookingName('${b.id}')" title="Edit performer or band name">Edit Name</button>`;
+      if (canEditBookingPerformers(b)) {
+        actionHtml += ` <button class="bi-edit-name-btn" onclick="openEditPerformersModal('${b.id}')" title="Edit performance type and members">Edit Type / Members</button>`;
+      }
       if (canCancel) {
         actionHtml += `<button class="bi-cancel-btn" onclick="cancelMyRequest('${b.id}','pending')" title="Withdraw request">x Withdraw</button>`;
       } else if (nearDate) {
@@ -9200,6 +9404,9 @@ function renderUserBookings() {
             <button class="bi-cancel-btn" onclick="dismissRequest('${b.id}')" title="Remove from list" style="opacity:.65;">x Clear</button>`;
         } else if (!checkState.can) {
           actionHtml = `<span class="proof-claimed-badge" style="background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.28);color:#70BAF4;font-size:.72rem;"> Upcoming Show</span>`;
+          if (canEditBookingPerformers(b)) {
+            actionHtml += ` <button class="bi-edit-name-btn" onclick="openEditPerformersModal('${b.id}')" title="Edit performance type and members" style="margin-top:.35rem;">Edit Type / Members</button>`;
+          }
           if (checkState.reason) {
             actionHtml += `<div style="font-size:.68rem;color:var(--muted);margin-top:.3rem;">${otsEscapeHtml(checkState.reason)}</div>`;
           }
@@ -9211,6 +9418,9 @@ function renderUserBookings() {
         } else {
           // Check-in window is open.
           actionHtml = `<button class="proof-upload-btn" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80;" data-checkin="${b.id}"> I Have Reached</button>`;
+          if (canEditBookingPerformers(b)) {
+            actionHtml += ` <button class="bi-edit-name-btn" onclick="openEditPerformersModal('${b.id}')" title="Edit performance type and members" style="margin-top:.35rem;">Edit Type / Members</button>`;
+          }
           if (checkState.late) {
             actionHtml += `<div style="font-size:.68rem;color:var(--orange);margin-top:.3rem;">Late check-in - total show points will be reduced</div>`;
           }
@@ -9239,6 +9449,7 @@ function renderUserBookings() {
         <div class="bi-detail">Team: ${otsEscapeHtml(b.name || '-')}</div>
         ${bookedBy ? `<div class="bi-detail">Booked by: ${otsEscapeHtml(bookedBy)}</div>` : ''}
         <div class="bi-detail">${formatDate(b.date)} - ${b.type}</div>
+        ${bookingPerformersText(b) ? `<div class="bi-detail">Performers: ${otsEscapeHtml(bookingPerformersText(b))}</div>` : ''}
         ${isRejected  ? '<div class="bi-status-note bi-note-red"> Not approved this time</div>' : ''}
         ${isCancelled ? '<div class="bi-status-note bi-note-red"> Cancelled</div>' : ''}
         ${isConfirmed ? '<div class="bi-status-note bi-note-green"> Slot confirmed!</div>' : ''}
@@ -9429,7 +9640,7 @@ function refreshAdmin(attempt) {
 
   var tasks = [];
   if (loadVenues) tasks.push({ key:'venues', promise:neonSQL('SELECT id,name,day,date,time_start,time_end,confirm_status,visibility,status,venue_type,landmark,map_url,image_url FROM venues ORDER BY date ASC, time_start ASC') });
-  if (loadBookings) tasks.push({ key:'bookings', promise:neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url FROM bookings ORDER BY created_at DESC LIMIT 1000') });
+  if (loadBookings) tasks.push({ key:'bookings', promise:neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,proof_url,proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url,performers FROM bookings ORDER BY created_at DESC LIMIT 1000') });
   if (!tasks.length) {
     setAdminLoadingState(false);
     _refreshAdminUI();
@@ -11458,7 +11669,7 @@ function startGigPoll() {
     if (document.hidden) return;
     try {
       const rows = await neonSQL(
-        'SELECT id, venue_id, venue, date, type, name, booked_by, phone, visibility, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url FROM bookings WHERE status=$1 ORDER BY date ASC',
+        'SELECT id, venue_id, venue, date, type, name, booked_by, phone, visibility, status, created_at, proof_url, proof_claimed, checkin_at, checkin_lat, checkin_lng, checkin_accuracy, checkin_map_url, performers FROM bookings WHERE status=$1 ORDER BY date ASC',
         ['confirmed']
       );
       const confirmedIds = new Set(rows.map(function(r){ return r.id; }));
@@ -11477,7 +11688,8 @@ function startGigPoll() {
             checkinLat:r.checkin_lat||null,
             checkinLng:r.checkin_lng||null,
             checkinAccuracy:r.checkin_accuracy||null,
-            checkinMapUrl:r.checkin_map_url||''
+            checkinMapUrl:r.checkin_map_url||'',
+            performers:parseBookingPerformers(r.performers)
           });
         } else {
           existing.proofUrl = r.proof_url||'';
@@ -11487,6 +11699,7 @@ function startGigPoll() {
           existing.checkinLng = r.checkin_lng||null;
           existing.checkinAccuracy = r.checkin_accuracy||null;
           existing.checkinMapUrl = r.checkin_map_url||'';
+          existing.performers = parseBookingPerformers(r.performers);
         }
       });
       renderGigCalendar();
