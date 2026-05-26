@@ -4665,6 +4665,7 @@ textarea{
         <div class="ms-stat"><div class="ms-stat-num" id="ms-points">-</div><div class="ms-stat-label">Points</div></div>
         <div class="ms-stat"><div class="ms-stat-num" id="ms-rank">#-</div><div class="ms-stat-label">My Rank</div></div>
       </div>
+      <button class="proof-upload-btn" onclick="openSharePointsModal()" style="margin:0 0 1rem;background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;">Share Points</button>
       <div id="myPerfList" class="my-perf-table" style="display:none;"></div>
     </div>
 
@@ -5203,6 +5204,18 @@ textarea{
         <div id="vp-status" style="font-size:.78rem;margin-top:.6rem;"></div>
       </div>
 
+      <!-- Member Point Share Requests -->
+      <div class="panel perm-points-edit" style="margin-bottom:1.8rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.8rem;flex-wrap:wrap;gap:.5rem;">
+          <div>
+            <div style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;">Point Share Requests</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem;">Approve member requests to share points. Show count will not transfer.</div>
+          </div>
+          <button onclick="loadPointTransferRequests()" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:.75rem;padding:.45rem .9rem;border-radius:3px;cursor:pointer;">Refresh</button>
+        </div>
+        <div id="pointTransferList"><div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Click Refresh to load share requests.</div></div>
+      </div>
+
       <!-- Approved Claims - Withdraw -->
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.8rem;flex-wrap:wrap;gap:.5rem;">
@@ -5490,6 +5503,25 @@ textarea{
 
     <button type="button" class="proof-submit-btn" id="proofSubmitBtn" onclick="proofSubmitTap(event)" disabled style="margin-top:1rem;">Submit for Approval</button>
     <div id="proofErr" style="color:#ff4b4b;font-size:.75rem;margin-top:.6rem;display:none;"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sharePointsModal" onclick="if(event.target===this)closeSharePointsModal()">
+  <div class="modal modal-scroll" style="max-width:430px;">
+    <button class="admin-modal-close" type="button" onclick="closeSharePointsModal()" aria-label="Close share points">&times;</button>
+    <div class="modal-title">Share Points</div>
+    <div class="modal-sub">Send a request to share points with another registered member. Admin approval is required.</div>
+    <label class="form-label">Receiver Mobile Number</label>
+    <input type="tel" class="form-input" id="share-points-phone" placeholder="10-digit mobile number">
+    <label class="form-label">Points to Share</label>
+    <input type="number" class="form-input" id="share-points-amount" min="0.1" step="0.1" placeholder="e.g. 1">
+    <label class="form-label">Reason</label>
+    <textarea class="form-input" id="share-points-reason" rows="3" placeholder="Why are you sharing these points?"></textarea>
+    <div id="share-points-status" style="font-size:.78rem;color:var(--muted);margin-top:.4rem;"></div>
+    <div class="modal-actions sticky-actions">
+      <button class="btn-cancel" type="button" onclick="closeSharePointsModal()">Cancel</button>
+      <button class="btn-confirm" id="share-points-submit" type="button" onclick="submitPointShareRequest()">Send Request</button>
+    </div>
   </div>
 </div>
 
@@ -7881,6 +7913,106 @@ async function loadMemberStats() {
   }
 }
 
+function pointTransferId() {
+  try { if (crypto && crypto.randomUUID) return 'PT-' + crypto.randomUUID(); } catch(_) {}
+  return 'PT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+async function getMemberAvailablePoints(phone) {
+  var norm = _normPhone(phone || '');
+  if (!norm) return 0;
+  var rows = await neonSQL(
+    "SELECT COALESCE(SUM(COALESCE(points,1)),0) AS total FROM claims WHERE member_phone=$1 AND status='approved'",
+    [norm]
+  );
+  var total = Number(rows && rows[0] ? rows[0].total : 0) || 0;
+  return Math.round(total * 100) / 100;
+}
+
+function openSharePointsModal() {
+  if (!memberLoggedIn) {
+    showToast('', 'Member Login Needed', 'Please login to share points.');
+    return;
+  }
+  var modal = document.getElementById('sharePointsModal');
+  if (!modal) return;
+  var phone = document.getElementById('share-points-phone');
+  var amount = document.getElementById('share-points-amount');
+  var reason = document.getElementById('share-points-reason');
+  var status = document.getElementById('share-points-status');
+  if (phone) phone.value = '';
+  if (amount) amount.value = '';
+  if (reason) reason.value = '';
+  if (status) status.textContent = 'Show count will not transfer. Only points are shared after admin approval.';
+  modal.classList.add('show');
+}
+
+function closeSharePointsModal() {
+  var modal = document.getElementById('sharePointsModal');
+  if (modal) modal.classList.remove('show');
+}
+
+async function submitPointShareRequest() {
+  if (!memberLoggedIn) {
+    showToast('', 'Member Login Needed', 'Please login to share points.');
+    return;
+  }
+  var btn = document.getElementById('share-points-submit');
+  var status = document.getElementById('share-points-status');
+  var receiverPhone = _normPhone((document.getElementById('share-points-phone') && document.getElementById('share-points-phone').value) || '');
+  var points = Number((document.getElementById('share-points-amount') && document.getElementById('share-points-amount').value) || 0);
+  var reason = ((document.getElementById('share-points-reason') && document.getElementById('share-points-reason').value) || '').trim();
+  var senderPhone = _normPhone(memberPhone || '');
+  if (!receiverPhone || receiverPhone.length < 10) {
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Enter the registered mobile number of the member receiving points.'; }
+    return;
+  }
+  if (receiverPhone === senderPhone) {
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'You cannot share points to your own account.'; }
+    return;
+  }
+  if (!isFinite(points) || points <= 0) {
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Enter points greater than 0.'; }
+    return;
+  }
+  points = Math.round(points * 100) / 100;
+  if (!reason) {
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Please enter a short reason.'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
+  if (status) { status.style.color = 'var(--muted)'; status.textContent = 'Checking member and available points...'; }
+  try {
+    var available = await getMemberAvailablePoints(senderPhone);
+    if (points > available) {
+      if (status) { status.style.color = '#ff4b4b'; status.textContent = 'You have only ' + available + ' point(s) available to share.'; }
+      return;
+    }
+    var receiverRows = await neonSQL(
+      "SELECT name, phone FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 AND active IS NOT FALSE LIMIT 1",
+      [receiverPhone]
+    );
+    if (!receiverRows.length) {
+      if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Receiver is not registered as an active member.'; }
+      return;
+    }
+    var receiver = receiverRows[0];
+    var transferId = pointTransferId();
+    await neonSQL(
+      "INSERT INTO point_transfers (id,sender_phone,sender_name,receiver_phone,receiver_name,points,reason,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')",
+      [transferId, senderPhone, memberName || memberEmail || senderPhone, receiverPhone, receiver.name || receiverPhone, points, reason]
+    );
+    closeSharePointsModal();
+    showToast('', 'Request Sent', 'Admin will review your point sharing request.');
+    try { notifyAdminPointTransfer({ id: transferId, name: memberName || senderPhone, phone: senderPhone, receiverName: receiver.name || '', receiverPhone: receiverPhone, points: points, reason: reason }); } catch(_) {}
+  } catch(e) {
+    console.error('[OTS] point share request:', e);
+    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Could not send request. Please try again.'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Request'; }
+  }
+}
+
 // ========================================
 // PROOF UPLOAD
 // ========================================
@@ -7926,8 +8058,10 @@ function venueMapsUrl(venue, fallbackName) {
 const CHECKIN_RADIUS_METERS = 100;
 const CHECKIN_OPEN_MINUTES = 60;
 const CHECKIN_LATE_GRACE_MINUTES = 10;
-const SHOW_FULL_POINTS = 4;
-const SHOW_LATE_POINTS = 2;
+const SHOW_POINTS_SOLO = 3;
+const SHOW_POINTS_DUO = 4;
+const SHOW_POINTS_GROUP = 5;
+const SHOW_LATE_POINTS = 1;
 
 function extractLatLngFromText(value) {
   var raw = String(value || '').trim();
@@ -8010,15 +8144,23 @@ function checkInStateForBooking(booking, now) {
 
 function bookingPointPool(booking) {
   var st = _showTimes(booking);
-  if (!booking || !booking.checkinAt || !st || !st.start) return SHOW_FULL_POINTS;
+  var fullPoints = showFullPointsForBooking(booking);
+  if (!booking || !booking.checkinAt || !st || !st.start) return fullPoints;
   var lateAt = new Date(st.start.getTime() + CHECKIN_LATE_GRACE_MINUTES * 60000);
   var checkedAt = new Date(booking.checkinAt);
-  return checkedAt > lateAt ? SHOW_LATE_POINTS : SHOW_FULL_POINTS;
+  return checkedAt > lateAt ? SHOW_LATE_POINTS : fullPoints;
+}
+
+function showFullPointsForBooking(booking) {
+  var type = String((booking && booking.type) || '').toLowerCase();
+  if (/\bsolo\b|single|1\s*(?:piece|pc|member|person)?\b/.test(type)) return SHOW_POINTS_SOLO;
+  if (/\bduo\b|2\s*(?:piece|pc|member|person)?\b|two\s*(?:piece|member|person)?/.test(type)) return SHOW_POINTS_DUO;
+  return SHOW_POINTS_GROUP;
 }
 
 function splitShowPoints(totalPoints, performerCount) {
   var count = Math.max(1, Number(performerCount) || 1);
-  return Math.round((Number(totalPoints || SHOW_FULL_POINTS) / count) * 100) / 100;
+  return Math.round((Number(totalPoints || SHOW_POINTS_GROUP) / count) * 100) / 100;
 }
 
 async function rebalanceApprovedShowClaims(bookingId, booking, countPendingToo) {
@@ -8568,7 +8710,7 @@ function dismissNotif(id) {
 // ========================================
 // DB MIGRATIONS (run once on startup)
 // ========================================
-const MIGRATION_VERSION = '2026-05-25-private-shows-1';
+const MIGRATION_VERSION = '2026-05-26-point-share-1';
 async function runMigrations(force) {
   try { if (!force && localStorage.getItem('ots_migration_version') === MIGRATION_VERSION) return; } catch(e) {}
   const run = async (sql) => { try { await neonSQL(sql); } catch(e) { console.warn('Migration skipped:', e && (e.message||e)); } };
@@ -8614,6 +8756,10 @@ async function runMigrations(force) {
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_accuracy DOUBLE PRECISION");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_map_url TEXT DEFAULT ''");
   await run("ALTER TABLE claims ADD COLUMN IF NOT EXISTS points NUMERIC DEFAULT 1");
+  await run("CREATE TABLE IF NOT EXISTS point_transfers (id TEXT PRIMARY KEY, sender_phone TEXT NOT NULL, sender_name TEXT DEFAULT '', receiver_phone TEXT NOT NULL, receiver_name TEXT DEFAULT '', points NUMERIC NOT NULL DEFAULT 0, reason TEXT DEFAULT '', status TEXT DEFAULT 'pending', created_at TIMESTAMPTZ DEFAULT NOW(), reviewed_at TIMESTAMPTZ, reviewed_by TEXT DEFAULT '')");
+  await run("CREATE INDEX IF NOT EXISTS idx_point_transfers_status ON point_transfers(status, created_at)");
+  await run("CREATE INDEX IF NOT EXISTS idx_point_transfers_sender ON point_transfers(sender_phone)");
+  await run("CREATE INDEX IF NOT EXISTS idx_point_transfers_receiver ON point_transfers(receiver_phone)");
   await run("CREATE TABLE IF NOT EXISTS dismissed_requests (user_key TEXT NOT NULL, booking_id TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (user_key, booking_id))");
   await run("CREATE TABLE IF NOT EXISTS dismissed_notifications (user_key TEXT NOT NULL, booking_id TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (user_key, booking_id))");
   await run("CREATE TABLE IF NOT EXISTS member_chats (id TEXT PRIMARY KEY, member_a_phone TEXT NOT NULL, member_b_phone TEXT NOT NULL, member_a_name TEXT DEFAULT '', member_b_name TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), last_message TEXT DEFAULT '')");
@@ -9377,7 +9523,7 @@ function switchAdminTab(tab) {
   if (tab==='claims')      loadAdminClaims();
   if (tab==='photos')      { renderPhotoManager(); loadPerfPhotos(); }
   if (tab==='members')     loadMembers();
-  if (tab==='points')      loadWithdrawList();
+  if (tab==='points')      { loadPointTransferRequests(); loadWithdrawList(); }
   if (tab==='errors')      loadClientErrorReports();
   if (tab==='settings')    {
     var ph=document.getElementById('settings-admin-phone'); if(ph) ph.value=adminPhone||'';
@@ -9597,6 +9743,120 @@ async function giveVolunteerPoints() {
   }
 }
 
+var _pointTransferRows = [];
+
+async function loadPointTransferRequests() {
+  var el = document.getElementById('pointTransferList');
+  if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Loading share requests...</div>';
+  try {
+    _pointTransferRows = await neonSQL(
+      "SELECT id,sender_phone,sender_name,receiver_phone,receiver_name,points,reason,status,created_at,reviewed_at,reviewed_by FROM point_transfers ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 300"
+    );
+    renderPointTransferRequests();
+  } catch(e) {
+    console.error('[OTS] load point transfers:', e);
+    if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">No point share requests yet.</div>';
+  }
+}
+
+function renderPointTransferRequests() {
+  var el = document.getElementById('pointTransferList');
+  if (!el) return;
+  var rows = _pointTransferRows || [];
+  var canEdit = hasAdminPerm('points');
+  if (!rows.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">No point share requests yet.</div>';
+    return;
+  }
+  el.innerHTML = rows.map(function(r) {
+    var pending = r.status === 'pending';
+    var statusColor = r.status === 'approved' ? 'var(--green)' : (r.status === 'rejected' ? '#ff6b6b' : 'var(--yellow)');
+    var actions = pending && canEdit
+      ? '<div style="display:flex;gap:.45rem;flex-wrap:wrap;">' +
+          '<button onclick="approvePointTransfer(\'' + otsJsString(r.id) + '\')" style="background:rgba(78,203,113,.1);border:1px solid rgba(78,203,113,.35);color:var(--green);font-family:\'DM Sans\',sans-serif;font-size:.7rem;font-weight:800;padding:.35rem .7rem;border-radius:3px;cursor:pointer;">Approve</button>' +
+          '<button onclick="rejectPointTransfer(\'' + otsJsString(r.id) + '\')" style="background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.38);color:#ff7b7b;font-family:\'DM Sans\',sans-serif;font-size:.7rem;font-weight:800;padding:.35rem .7rem;border-radius:3px;cursor:pointer;">Reject</button>' +
+        '</div>'
+      : '<span style="font-size:.72rem;color:var(--muted);">' + otsEscapeHtml(r.reviewed_by || '') + '</span>';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:.8rem .2rem;border-bottom:1px solid rgba(255,255,255,.06);gap:.8rem;flex-wrap:wrap;">' +
+      '<div style="flex:1;min-width:220px;">' +
+        '<div style="font-size:.84rem;font-weight:800;">' + otsEscapeHtml(r.sender_name || r.sender_phone || '-') + ' -> ' + otsEscapeHtml(r.receiver_name || r.receiver_phone || '-') + '</div>' +
+        '<div style="font-size:.72rem;color:var(--muted);line-height:1.5;">' + otsEscapeHtml(r.sender_phone || '') + ' to ' + otsEscapeHtml(r.receiver_phone || '') + ' - ' + otsEscapeHtml(r.reason || '') + '</div>' +
+      '</div>' +
+      '<div style="text-align:right;min-width:86px;">' +
+        '<div style="font-size:.95rem;font-weight:900;color:var(--orange);">' + (Number(r.points)||0) + ' pt</div>' +
+        '<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;color:' + statusColor + ';">' + otsEscapeHtml(r.status || 'pending') + '</div>' +
+      '</div>' +
+      actions +
+    '</div>';
+  }).join('');
+}
+
+async function approvePointTransfer(id) {
+  if (!requireAdminPerm('points', 'point sharing')) return;
+  var r = (_pointTransferRows || []).find(function(x){ return String(x.id) === String(id); });
+  if (!r || r.status !== 'pending') {
+    showToast('', 'Not Available', 'This request is no longer pending.');
+    return;
+  }
+  var points = Math.round((Number(r.points) || 0) * 100) / 100;
+  if (points <= 0) {
+    showToast('', 'Invalid Points', 'Point amount is invalid.');
+    return;
+  }
+  if (!confirm('Approve sharing ' + points + ' point(s) from ' + (r.sender_name || r.sender_phone) + ' to ' + (r.receiver_name || r.receiver_phone) + '?')) return;
+  try {
+    var available = await getMemberAvailablePoints(r.sender_phone);
+    if (points > available) {
+      showToast('', 'Not Enough Points', 'Sender currently has only ' + available + ' point(s).');
+      return;
+    }
+    var debitReason = 'Shared ' + points + ' point(s) to ' + (r.receiver_name || r.receiver_phone) + (r.reason ? ': ' + r.reason : '');
+    var creditReason = 'Received ' + points + ' point(s) from ' + (r.sender_name || r.sender_phone) + (r.reason ? ': ' + r.reason : '');
+    await neonSQL(
+      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','transfer',$4,$5)",
+      ['TRANSFER-' + id + '-OUT', r.sender_phone, r.sender_name || r.sender_phone, debitReason, -points]
+    );
+    await neonSQL(
+      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','transfer',$4,$5)",
+      ['TRANSFER-' + id + '-IN', r.receiver_phone, r.receiver_name || r.receiver_phone, creditReason, points]
+    );
+    await neonSQL(
+      "UPDATE point_transfers SET status='approved', reviewed_at=NOW(), reviewed_by=$2 WHERE id=$1",
+      [id, currentAdminUsername || 'admin']
+    );
+    notifyMemberUpdate({ updateType:'points', status:'approved', phone:r.sender_phone, name:r.sender_name || '', points:-points, reason:debitReason });
+    notifyMemberUpdate({ updateType:'points', status:'approved', phone:r.receiver_phone, name:r.receiver_name || '', points:points, reason:creditReason });
+    logAdminAction('approve_point_transfer', points + ' pt from ' + (r.sender_name || r.sender_phone) + ' to ' + (r.receiver_name || r.receiver_phone)).catch(function(){});
+    showToast('', 'Transfer Approved', 'Points moved successfully. Show count was not changed.');
+    await loadPointTransferRequests();
+    await loadWithdrawList();
+    loadLeaderboard();
+  } catch(e) {
+    console.error('[OTS] approve point transfer:', e);
+    showToast('', 'Approve Failed', 'Could not approve this point share.');
+  }
+}
+
+async function rejectPointTransfer(id) {
+  if (!requireAdminPerm('points', 'point sharing')) return;
+  var r = (_pointTransferRows || []).find(function(x){ return String(x.id) === String(id); });
+  if (!r || r.status !== 'pending') return;
+  if (!confirm('Reject this point share request?')) return;
+  try {
+    await neonSQL(
+      "UPDATE point_transfers SET status='rejected', reviewed_at=NOW(), reviewed_by=$2 WHERE id=$1",
+      [id, currentAdminUsername || 'admin']
+    );
+    notifyMemberUpdate({ updateType:'points', status:'rejected', phone:r.sender_phone, name:r.sender_name || '', points:r.points, reason:'Point share request rejected' });
+    logAdminAction('reject_point_transfer', (r.sender_name || r.sender_phone) + ' to ' + (r.receiver_name || r.receiver_phone)).catch(function(){});
+    showToast('', 'Transfer Rejected', 'Point share request rejected.');
+    await loadPointTransferRequests();
+  } catch(e) {
+    console.error('[OTS] reject point transfer:', e);
+    showToast('', 'Reject Failed', 'Could not reject this point share.');
+  }
+}
+
 async function loadWithdrawList() {
   var el = document.getElementById('withdrawList');
   if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Loading...</div>';
@@ -9629,11 +9889,16 @@ function _renderWithdrawList(rows) {
   if (!rows.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">No approved points found.</div>'; return; }
   el.innerHTML = rows.map(function(r) {
     var isVol = r.claim_type === 'volunteer';
+    var isTransfer = r.claim_type === 'transfer';
     var badge = isVol
       ? '<span style="background:rgba(112,186,244,.15);border:1px solid rgba(112,186,244,.35);color:var(--blue);font-size:.65rem;font-weight:700;padding:.1rem .45rem;border-radius:3px;margin-left:.4rem;">VOLUNTEER</span>'
+      : isTransfer
+      ? '<span style="background:rgba(245,119,161,.13);border:1px solid rgba(245,119,161,.32);color:#f577a1;font-size:.65rem;font-weight:700;padding:.1rem .45rem;border-radius:3px;margin-left:.4rem;">TRANSFER</span>'
       : '<span style="background:rgba(var(--green-rgb),.1);border:1px solid rgba(var(--green-rgb),.3);color:var(--green);font-size:.65rem;font-weight:700;padding:.1rem .45rem;border-radius:3px;margin-left:.4rem;">SHOW</span>';
     var detail = isVol
       ? (r.reason || 'Volunteer contribution')
+      : isTransfer
+      ? (r.reason || 'Point transfer')
       : ((r.venue||'-') + (r.date ? ' - ' + formatDate(r.date) : ''));
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);gap:.5rem;flex-wrap:wrap;">' +
       '<div style="flex:1;min-width:160px;">' +
@@ -10783,9 +11048,10 @@ async function createEmergencyShowCredit(data) {
     proof_claimed: true,
     checkin_at: booking.checkinAt
   }]);
+  var manualPoints = showFullPointsForBooking(booking);
   await neonSQL(
     "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','show',$4,$5)",
-    [booking.id, _normPhone(booking.phone || '') || booking.phone || '', booking.name, booking.notes, SHOW_FULL_POINTS]
+    [booking.id, _normPhone(booking.phone || '') || booking.phone || '', booking.name, booking.notes, manualPoints]
   );
   allBookings.unshift(booking);
   saveLocal();
@@ -10800,14 +11066,14 @@ async function createEmergencyShowCredit(data) {
     bookingId: booking.id,
     venue: booking.venue,
     date: booking.date,
-    points: String(SHOW_FULL_POINTS),
+    points: String(manualPoints),
     reason: 'show completed',
     phone: booking.phone,
     email: booking.email,
     memberName: booking.name
   });
   logAdminAction('emergency_show_credit', booking.name + ' @ ' + booking.venue + ' #' + booking.id).catch(function(){});
-  showToast('', 'Show Credit Added', '1 show count and ' + SHOW_FULL_POINTS + ' point(s) added for ' + booking.name + '.');
+  showToast('', 'Show Credit Added', '1 show count and ' + manualPoints + ' point(s) added for ' + booking.name + '.');
 }
 
 async function createEmergencyUploadAccess(data) {
@@ -11003,8 +11269,8 @@ async function adminGrantShowPoint(id, mode) {
     }
   }
   var confirmText = isTeamMember
-    ? ('Add show credit for ' + targetName + ' on this booking? Approved performers will share the 4-point slot pool.')
-    : 'Manually grant/re-approve show credit for this booking member? Approved performers will share the 4-point slot pool.';
+    ? ('Add show credit for ' + targetName + ' on this booking? Approved performers will share the slot point pool.')
+    : 'Manually grant/re-approve show credit for this booking member? Approved performers will share the slot point pool.';
   if (!confirm(confirmText)) return;
   try {
     var existing = await neonSQL(
@@ -13638,6 +13904,11 @@ function _nativeTapRoute(payload, attempt) {
       return false;
     }
     showPage('admin');
+    if (String(payload.eventType || payload.event_type || '') === 'point_transfer') {
+      switchAdminTab('points');
+      _nativeTapClear();
+      return true;
+    }
     currentFilter = 'all';
     var search = document.getElementById('adminSearch'); if (search) search.value = '';
     switchAdminTab('bookings');
@@ -13847,6 +14118,25 @@ function notifyAdminZoneApproval(member) {
     type: 'zone_approval'
   }).catch(function(e){
     console.warn('[OTS] admin zone approval push failed:', e && (e.message || e));
+  });
+}
+
+function notifyAdminPointTransfer(req) {
+  if (!req || !pushBackendEnabled()) return;
+  pushApi('/push/admin-queue', {
+    eventType: 'point_transfer',
+    type: 'point_transfer',
+    bookingId: req.id || '',
+    name: req.name || '',
+    phone: req.phone || '',
+    receiverName: req.receiverName || '',
+    receiverPhone: req.receiverPhone || '',
+    points: req.points || '',
+    reason: req.reason || '',
+    venue: 'Point share request',
+    date: ''
+  }).catch(function(e){
+    console.warn('[OTS] admin point transfer push failed:', e && (e.message || e));
   });
 }
 
