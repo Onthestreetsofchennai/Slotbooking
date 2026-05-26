@@ -574,13 +574,6 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 }
 .admin-booking-edit-modal .form-group{margin-bottom:.9rem;}
 .admin-booking-edit-modal textarea.form-input{resize:vertical;min-height:92px;}
-.admin-private-panel{display:none;margin:0 0 1rem;padding:1rem 1.1rem;border:1px solid rgba(158,118,204,.28);background:rgba(158,118,204,.08);border-radius:8px;}
-.admin-private-panel.show{display:block;}
-.admin-private-title{font-family:'Playfair Display',serif;font-size:1.05rem;font-weight:800;color:var(--text);margin-bottom:.35rem;}
-.admin-private-sub{font-size:.78rem;color:var(--muted);line-height:1.45;}
-.admin-private-list{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem;}
-.admin-private-chip{border:1px solid rgba(158,118,204,.3);background:rgba(255,255,255,.04);border-radius:999px;padding:.38rem .65rem;font-size:.7rem;color:var(--purple);font-weight:800;letter-spacing:.03em;}
-.td-private-badge{display:inline-flex;margin-top:.35rem;border:1px solid rgba(158,118,204,.32);background:rgba(158,118,204,.1);color:var(--purple);border-radius:999px;padding:.2rem .45rem;font-size:.62rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;}
 .admin-access-dialog{
   width:min(92vw,760px);
   max-width:760px;
@@ -1312,7 +1305,6 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
 .vrc-available{color:var(--green);border:1px solid rgba(78,203,113,.3);background:rgba(78,203,113,.08);}
 .vrc-pending{color:var(--orange);border:1px solid rgba(240,119,30,.35);background:rgba(240,119,30,.1);}
 .vrc-public{color:var(--blue);border:1px solid rgba(112,186,244,.3);background:rgba(112,186,244,.08);}
-.vrc-private{color:var(--purple);border:1px solid rgba(158,118,204,.3);background:rgba(158,118,204,.08);}
 .vrc-booked{color:#ff8f8f;border:1px solid rgba(255,95,95,.38);background:rgba(255,95,95,.12);}
 
 /* Booked venue card state */
@@ -4898,7 +4890,7 @@ textarea{
           </div>
         </div>
         <div id="idProofStatus" style="font-size:.72rem;margin-top:.35rem;min-height:1.1em;text-align:center;"></div>
-        <div style="font-size:.63rem;color:var(--muted);margin-top:.15rem;">Kept private - only visible to OTS admins.</div>
+        <div style="font-size:.63rem;color:var(--muted);margin-top:.15rem;">Visible only to OTS admins.</div>
       </div>
     </div>
 
@@ -5057,11 +5049,9 @@ textarea{
         <button class="filter-btn"        id="filter-confirmed" onclick="setFilter('confirmed')">Confirmed</button>
         <button class="filter-btn"        id="filter-rejected"  onclick="setFilter('rejected')">Rejected</button>
         <button class="filter-btn"        id="filter-needsProof" onclick="setFilter('needsProof')">Needs Proof / Point</button>
-        <button class="filter-btn"        id="filter-private" onclick="setFilter('private')">Private Shows</button>
         <button class="filter-btn perm-claims-edit" type="button" onclick="openAdminEmergencyCredit()">Emergency Show Credit</button>
         <button class="filter-btn perm-claims-edit" type="button" onclick="openAdminEmergencyUpload()">Emergency Upload Access</button>
       </div>
-      <div class="admin-private-panel" id="privateShowsPanel"></div>
       <div class="table-wrap">
         <div class="tbl-head">
           <div class="th">Team / Booker</div>
@@ -5359,7 +5349,7 @@ textarea{
       <div style="font-size:.75rem;color:#dc2626;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem;">What will be deleted</div>
       <ul style="font-size:.8rem;color:var(--muted);line-height:2;margin:0;padding-left:1.1rem;">
         <li>All venues in Venue Manager</li>
-        <li>All venue dates, timings, images and public/private status</li>
+        <li>All venue dates, timings and images</li>
       </ul>
       <div style="font-size:.78rem;color:var(--muted);line-height:1.6;margin-top:.7rem;">Bookings, claims, members, admin accounts, settings and gallery photos are not deleted by this action.</div>
     </div>
@@ -5575,7 +5565,6 @@ textarea{
       <div class="form-group"><label class="form-label">Member Email</label><input class="form-input" id="abe-email" type="email" placeholder="Registered email"></div>
     </div>
     <div class="form-group"><label class="form-label">Status</label><select class="form-input" id="abe-status"><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option></select></div>
-    <div class="form-group"><label class="form-label">Show Visibility</label><select class="form-input" id="abe-visibility"><option value="Public">Public - visible to members</option><option value="Private">Private - admin only</option></select></div>
     <div class="form-group"><label class="form-label">Admin Note</label><textarea class="form-input" id="abe-notes" rows="3" placeholder="Reason / sudden change note"></textarea></div>
     <div class="modal-actions sticky-actions">
       <button type="button" class="btn-secondary" onclick="closeAdminBookingEdit()">Cancel</button>
@@ -6259,7 +6248,7 @@ async function saveRemoteNow(showToastOnFail) {
     phone:b.phone||'', email:b.email||'',
     notes:b.notes||'',
     performers:stringifyBookingPerformers(b.performers || []),
-    visibility:b.visibility || (isBookingPrivate(b) ? 'Private' : 'Public'),
+    visibility:'Public',
     status:b.status||'pending', created_at:b.createdAt||new Date().toISOString(),
     push_token:b.pushToken||''
   }));
@@ -6361,15 +6350,6 @@ function isVenueOpen(v) {
   var st = normalizeStatus(v && v.status, 'open');
   return !st || st === 'open' || st === 'active' || st === 'available';
 }
-function isVenuePrivate(v) {
-  return /private/i.test(String(v && v.visibility || ''));
-}
-function isBookingPrivate(b) {
-  if (!b) return false;
-  if (/private/i.test(String(b.visibility || ''))) return true;
-  var v = findVenueForBooking(b);
-  return isVenuePrivate(v);
-}
 function parseVenueClock(value, fallback) {
   var s = String(value || fallback || '').trim();
   if (!s) return null;
@@ -6435,7 +6415,7 @@ function isVenueOver(v, now) {
   return windowInfo.end.getTime() <= (now || new Date()).getTime();
 }
 function isVenueUpcomingForUsers(v) {
-  return isVenueOpen(v) && !isVenuePrivate(v) && normalizeVenueDate(v.date) && !isVenueOver(v);
+  return isVenueOpen(v) && normalizeVenueDate(v.date) && !isVenueOver(v);
 }
 function getBookingWindow(b) {
   if (!b) return null;
@@ -6692,7 +6672,7 @@ function renderGigCalendar() {
   if (!list) return;
   const now = new Date();
   const confirmed = allBookings
-    .filter(b => b.status === 'confirmed' && !isBookingPrivate(b) && !isBookingShowOver(b, now))
+    .filter(b => b.status === 'confirmed' && !isBookingShowOver(b, now))
     .sort((a,b) => bookingStartTimeMs(a) - bookingStartTimeMs(b));
   if (!confirmed.length) {
     list.innerHTML = '<div class="gc-empty">No confirmed shows yet - check back soon!</div>';
@@ -8908,7 +8888,7 @@ function dismissNotif(id) {
 // ========================================
 // DB MIGRATIONS (run once on startup)
 // ========================================
-const MIGRATION_VERSION = '2026-05-26-booking-performers-1';
+const MIGRATION_VERSION = '2026-05-26-remove-private-shows-1';
 async function runMigrations(force) {
   try { if (!force && localStorage.getItem('ots_migration_version') === MIGRATION_VERSION) return; } catch(e) {}
   const run = async (sql) => { try { await neonSQL(sql); } catch(e) { console.warn('Migration skipped:', e && (e.message||e)); } };
@@ -8921,6 +8901,8 @@ async function runMigrations(force) {
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booked_by     TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS push_token    TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS visibility    TEXT    DEFAULT 'Public'");
+  await run("UPDATE bookings SET visibility='Public' WHERE LOWER(COALESCE(visibility,''))='private'");
+  await run("UPDATE venues SET visibility='Public' WHERE LOWER(COALESCE(visibility,''))='private'");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS proof_url     TEXT    DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS proof_claimed BOOLEAN DEFAULT false");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS performers TEXT DEFAULT '[]'");
@@ -9334,7 +9316,7 @@ function _adminContactHtml(label, title) {
 function renderUserBookings() {
   var list = document.getElementById('bookingsList');
   if (!list) return;
-  var visibleBookings = myBookings.filter(function(b){ return !isBookingPrivate(b); });
+  var visibleBookings = myBookings.slice();
   if (!visibleBookings.length) {
     list.innerHTML = '<div class="empty-state">No requests yet. Submit your slot above.</div>';
     return;
@@ -10666,7 +10648,6 @@ function parseAndPreviewCSV(text) {
     const name     = (cols[4] || '').trim();
     const venueTypeRaw = (cols[5] || '').trim();
     const confirmRaw = (cols[6] || '').trim();
-    const visRaw     = (cols[6] || '').trim().replace(/[\r\n\s]+/g,' ');
 
     // -- Convert date: accepts "1-Jan-2026", "01/01/2026", "2026-01-01" --
     const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
@@ -10718,9 +10699,6 @@ function parseAndPreviewCSV(text) {
     if (/pending/i.test(confirmRaw))   confirmStatus = 'Pending';
     else if (/cancel/i.test(confirmRaw)) confirmStatus = 'Cancelled';
 
-    // -- Visibility --
-    const visibility = /private/i.test(visRaw) ? 'Private' : 'Public';
-
     // -- Validation --
     let rowStatus = 'new', errMsg = '';
     const rowKey = venueDuplicateKey({ name, date: isoDate, timeStart, timeEnd });
@@ -10732,7 +10710,7 @@ function parseAndPreviewCSV(text) {
     else seenImportKeys.add(rowKey);
 
     const venueType = normalizeVenueType(venueTypeRaw, name);
-    csvParsedRows.push({ day:day.trim(), date:isoDate, rawDate:dateRaw, timeStart, timeEnd, slotRaw, name, venueType, confirmStatus, visibility, rowStatus, errMsg });
+    csvParsedRows.push({ day:day.trim(), date:isoDate, rawDate:dateRaw, timeStart, timeEnd, slotRaw, name, venueType, confirmStatus, visibility:'Public', rowStatus, errMsg });
   });
 
   renderCSVPreview();
@@ -10835,34 +10813,11 @@ function setFilter(f) {
 function isBookingNeedsProofOrPoint(b) {
   return !!(b && b.status === 'confirmed' && isBookingShowOver(b, new Date()) && (!b.proofUrl || !b.proofClaimed));
 }
-function renderPrivateShowsPanel(rows) {
-  var panel = document.getElementById('privateShowsPanel');
-  if (!panel) return;
-  var privateRows = (rows || allBookings || []).filter(isBookingPrivate);
-  if (!privateRows.length) {
-    panel.classList.remove('show');
-    panel.innerHTML = '';
-    return;
-  }
-  var upcoming = privateRows
-    .slice()
-    .sort(function(a,b){ return bookingStartTimeMs(a) - bookingStartTimeMs(b); })
-    .slice(0, 4)
-    .map(function(b){
-      return '<span class="admin-private-chip">' + otsEscapeHtml(formatDateShort(b.date) + ' - ' + (b.venue || 'Private Show')) + '</span>';
-    }).join('');
-  panel.classList.add('show');
-  panel.innerHTML = '<div class="admin-private-title">Private Shows (' + privateRows.length + ')</div>' +
-    '<div class="admin-private-sub">Admin-only shows are hidden from the member schedule and venue booking pages. Use this panel/filter for internal GCC/Foundation/private work.</div>' +
-    '<div class="admin-private-list">' + upcoming + '<button class="filter-btn" type="button" onclick="setFilter(\'private\')">View Private Shows</button></div>';
-}
 function filterTable() {
   const q=(document.getElementById('adminSearch')?.value||'').toLowerCase();
   bookingPage = Math.max(1, bookingPage || 1);
   let rows=[...allBookings];
-  renderPrivateShowsPanel(rows);
   if (currentFilter === 'needsProof') rows = rows.filter(isBookingNeedsProofOrPoint);
-  else if (currentFilter === 'private') rows = rows.filter(isBookingPrivate);
   else if (currentFilter!=='all') rows=rows.filter(b=>b.status===currentFilter);
   if (q) rows=rows.filter(b=>
     String(b.name||'').toLowerCase().includes(q) ||
@@ -10925,7 +10880,6 @@ function renderAdminTable(rows) {
         <div style="font-weight:700;font-size:.85rem">${otsEscapeHtml(b.name || '-')}</div>
         <div style="font-size:.7rem;color:var(--blue);font-weight:700;margin-top:.15rem;">Booked by: ${otsEscapeHtml(getBookingPersonName(b) || '-')}</div>
         <div style="font-size:.72rem;color:var(--muted);margin-top:.15rem;">${otsEscapeHtml(b.venue || '-')}</div>
-        ${isBookingPrivate(b) ? '<span class="td-private-badge">Private</span>' : ''}
       </div>
       <div class="td muted">${formatDate(b.date)}</div>
       <div class="td"><span style="font-size:.8rem;font-weight:600;color:${TYPE_COLORS[b.type]||'var(--purple)'}">${b.type}</span></div>
@@ -11034,10 +10988,8 @@ function adminBookingVenueChanged() {
   if (!v) return;
   var nameEl = document.getElementById('abe-venue-name');
   var dateEl = document.getElementById('abe-date');
-  var visEl = document.getElementById('abe-visibility');
   if (nameEl) nameEl.value = v.name || '';
   if (dateEl && v.date) dateEl.value = v.date;
-  if (visEl) visEl.value = v.visibility || 'Public';
 }
 
 function openAdminBookingEdit(id) {
@@ -11059,7 +11011,6 @@ function openAdminBookingEdit(id) {
   document.getElementById('abe-phone').value = b.phone || '';
   document.getElementById('abe-email').value = b.email || '';
   document.getElementById('abe-status').value = b.status || 'pending';
-  document.getElementById('abe-visibility').value = b.visibility || (isBookingPrivate(b) ? 'Private' : 'Public');
   document.getElementById('abe-notes').value = b.notes || '';
   _setAdminBookingEditError('');
   modal.classList.add('show');
@@ -11082,7 +11033,6 @@ function openAdminEmergencyCredit() {
   document.getElementById('abe-phone').value = '';
   document.getElementById('abe-email').value = '';
   document.getElementById('abe-status').value = 'confirmed';
-  document.getElementById('abe-visibility').value = 'Public';
   document.getElementById('abe-notes').value = 'Emergency admin show credit';
   _setAdminBookingEditError('');
   modal.classList.add('show');
@@ -11119,7 +11069,7 @@ function readAdminBookingEditForm() {
     phone: (document.getElementById('abe-phone').value || '').trim(),
     email: (document.getElementById('abe-email').value || '').trim().toLowerCase(),
     status: (document.getElementById('abe-status').value || 'pending').trim(),
-    visibility: (document.getElementById('abe-visibility').value || 'Public').trim(),
+    visibility: 'Public',
     notes: (document.getElementById('abe-notes').value || '').trim()
   };
 }
