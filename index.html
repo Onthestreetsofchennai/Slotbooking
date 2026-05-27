@@ -901,6 +901,41 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
   margin-top:.7rem;
 }
 .community-ad-editor textarea{resize:vertical;margin-top:.7rem;}
+.community-ad-image-tools{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;}
+.community-ad-image-btn,.community-ad-image-remove{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:42px;
+  border-radius:4px;
+  padding:.55rem .9rem;
+  font-family:'DM Sans',sans-serif;
+  font-size:.72rem;
+  font-weight:900;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+.community-ad-image-btn{background:rgba(112,186,244,.12);border:1px solid rgba(112,186,244,.35);color:var(--blue);}
+.community-ad-image-remove{background:transparent;border:1px solid rgba(255,107,107,.28);color:var(--red);}
+.community-ad-image-preview{
+  margin-top:.8rem;
+  display:flex;
+  align-items:center;
+  gap:.75rem;
+  background:rgba(255,255,255,.035);
+  border:1px solid var(--border);
+  border-radius:7px;
+  padding:.65rem;
+}
+.community-ad-image-preview img{
+  width:96px;
+  height:64px;
+  object-fit:cover;
+  border-radius:5px;
+  display:block;
+}
+.community-ad-image-preview span{font-size:.76rem;color:var(--muted);}
 .community-ad-actions{display:flex;gap:.7rem;flex-wrap:wrap;margin-top:.8rem;}
 .community-ad-admin-list{display:grid;gap:.75rem;}
 .community-ad-admin-row{
@@ -909,9 +944,26 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
   border-radius:8px;
   padding:1rem;
   display:grid;
-  grid-template-columns:minmax(0,1fr) auto auto;
+  grid-template-columns:92px minmax(0,1fr) auto auto;
   align-items:center;
   gap:.9rem;
+}
+.community-ad-admin-thumb{
+  width:92px;
+  height:64px;
+  object-fit:cover;
+  border-radius:6px;
+  background:rgba(255,255,255,.045);
+  border:1px solid var(--border);
+  color:var(--muted);
+  font-size:.62rem;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
 }
 .community-ad-admin-title{
   font-family:'Playfair Display',serif;
@@ -1115,13 +1167,16 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
 .community-news-strip{
   display:flex;
   gap:.75rem;
-  overflow-x:auto;
+  width:max-content;
   padding:.15rem 0 .4rem;
-  scroll-snap-type:x proximity;
-  scrollbar-width:none;
-  -webkit-overflow-scrolling:touch;
+  animation:communityNewsScroll 90s linear infinite;
 }
-.community-news-strip::-webkit-scrollbar{display:none;}
+.community-news-wrap{overflow:hidden;}
+.community-news-wrap:hover .community-news-strip{animation-play-state:paused;}
+@keyframes communityNewsScroll{
+  0%{transform:translateX(0);}
+  100%{transform:translateX(-50%);}
+}
 .community-news-anchor{color:inherit;text-decoration:none;display:block;flex:0 0 auto;}
 .community-news-card{
   flex:0 0 310px;
@@ -1131,6 +1186,15 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
   border-radius:8px;
   padding:1rem;
   scroll-snap-align:start;
+  overflow:hidden;
+}
+.community-news-image{
+  width:calc(100% + 2rem);
+  height:142px;
+  object-fit:cover;
+  display:block;
+  margin:-1rem -1rem .85rem;
+  background:rgba(255,255,255,.04);
 }
 .community-news-kicker{
   font-size:.6rem;
@@ -1163,6 +1227,7 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
 @media(max-width:700px){
   .community-news-wrap{padding:0 1rem;margin-top:1rem;}
   .community-news-card{flex-basis:82vw;min-height:118px;}
+  .community-news-strip{animation-duration:70s;}
   .community-ad-row,.community-ad-admin-row{grid-template-columns:1fr;}
   .community-ad-admin-actions{justify-content:flex-start;}
 }
@@ -5433,6 +5498,12 @@ textarea{
           <input type="url" class="form-input" id="communityAdLink" placeholder="Optional link">
           <input type="text" class="form-input" id="communityAdCta" placeholder="Button text, e.g. View Details">
         </div>
+        <div class="community-ad-image-tools">
+          <label class="community-ad-image-btn" for="communityAdImageInput">Upload Image</label>
+          <input type="file" id="communityAdImageInput" accept="image/*" style="display:none;" onchange="handleCommunityAdImageUpload(event)">
+          <button type="button" class="community-ad-image-remove" onclick="removeCommunityAdImage()">Remove Image</button>
+        </div>
+        <div class="community-ad-image-preview" id="communityAdImagePreview" style="display:none;"></div>
         <div class="community-ad-actions">
           <button type="button" class="btn-primary" onclick="saveCommunityAd()">Publish Update</button>
           <button type="button" class="btn-secondary" onclick="clearCommunityAdForm()">Clear</button>
@@ -9603,10 +9674,11 @@ function parseCommunityAds(raw) {
       message: String(item.message || '').trim(),
       link: String(item.link || '').trim(),
       cta: String(item.cta || '').trim(),
+      imageUrl: String(item.imageUrl || item.image_url || '').trim(),
       active: item.active !== false,
       createdAt: item.createdAt || new Date().toISOString()
     };
-  }).filter(function(item) { return item.title || item.message; }).slice(0, 30);
+  }).filter(function(item) { return item.title || item.message || item.imageUrl; }).slice(0, 30);
 }
 function serializeCommunityAds() {
   return JSON.stringify(parseCommunityAds(communityAds));
@@ -9672,6 +9744,7 @@ function renderHelpdeskContacts() {
 }
 
 var _editingCommunityAdId = '';
+var _communityAdImageUrl = '';
 
 function renderCommunityAdsHome() {
   var wrap = document.getElementById('communityNewsWrap');
@@ -9684,9 +9757,11 @@ function renderCommunityAdsHome() {
     return;
   }
   wrap.style.display = '';
-  strip.innerHTML = active.map(function(ad) {
+  var loopAds = active.length < 4 ? active.concat(active, active) : active.concat(active);
+  strip.innerHTML = loopAds.map(function(ad) {
     var cta = ad.cta || (ad.link ? 'View Details' : '');
     var body = '<div class="community-news-card">' +
+      (ad.imageUrl ? '<img class="community-news-image" src="' + otsEscapeHtml(ad.imageUrl) + '" alt="' + otsEscapeHtml(ad.title || 'Community update') + '" loading="lazy" decoding="async">' : '') +
       '<div class="community-news-kicker">Update</div>' +
       '<div class="community-news-title">' + otsEscapeHtml(ad.title || 'Community Update') + '</div>' +
       (ad.message ? '<div class="community-news-text">' + otsEscapeHtml(ad.message) + '</div>' : '') +
@@ -9701,12 +9776,57 @@ function renderCommunityAdsHome() {
 
 function clearCommunityAdForm() {
   _editingCommunityAdId = '';
-  ['communityAdTitle','communityAdMessage','communityAdLink','communityAdCta'].forEach(function(id) {
+  _communityAdImageUrl = '';
+  ['communityAdTitle','communityAdMessage','communityAdLink','communityAdCta','communityAdImageInput'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
   });
+  renderCommunityAdImagePreview();
   var btn = document.querySelector('.community-ad-actions .btn-primary');
   if (btn) btn.textContent = 'Publish Update';
+}
+
+function renderCommunityAdImagePreview() {
+  var prev = document.getElementById('communityAdImagePreview');
+  if (!prev) return;
+  if (!_communityAdImageUrl) {
+    prev.style.display = 'none';
+    prev.innerHTML = '';
+    return;
+  }
+  prev.style.display = '';
+  prev.innerHTML = '<img src="' + otsEscapeHtml(_communityAdImageUrl) + '" alt="News image preview"><span>Image ready</span>';
+}
+
+async function handleCommunityAdImageUpload(e) {
+  if (!requireAdminPerm('ads', 'community news')) { if (e && e.target) e.target.value = ''; return; }
+  var file = e && e.target && e.target.files ? e.target.files[0] : null;
+  if (!file) return;
+  if (e.target) e.target.value = '';
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('', 'Too Large', 'Choose an image below 5 MB.');
+    return;
+  }
+  var status = document.getElementById('communityAdStatus');
+  if (status) status.textContent = 'Preparing image...';
+  try {
+    var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    _communityAdImageUrl = await sbStorageUpload(file, 'community_ad_' + Date.now() + '.' + ext);
+    renderCommunityAdImagePreview();
+    if (status) status.textContent = 'Image added. Publish to save it.';
+  } catch(err) {
+    console.error('community ad image upload:', err);
+    if (status) status.textContent = 'Could not prepare image.';
+    showToast('', 'Image Failed', 'Please try another image.');
+  }
+}
+
+function removeCommunityAdImage() {
+  if (!hasAdminPerm('ads')) return;
+  _communityAdImageUrl = '';
+  var inp = document.getElementById('communityAdImageInput');
+  if (inp) inp.value = '';
+  renderCommunityAdImagePreview();
 }
 
 async function persistCommunityAds(statusText) {
@@ -9729,7 +9849,7 @@ async function saveCommunityAd() {
   var link = (document.getElementById('communityAdLink') || {}).value || '';
   var cta = (document.getElementById('communityAdCta') || {}).value || '';
   title = title.trim(); message = message.trim(); link = link.trim(); cta = cta.trim();
-  if (!title && !message) { showToast('', 'Add Content', 'Enter a title or short message.'); return; }
+  if (!title && !message && !_communityAdImageUrl) { showToast('', 'Add Content', 'Enter a title, message or image.'); return; }
   if (link && !/^https?:\/\//i.test(link)) { showToast('', 'Invalid Link', 'Use a full link starting with https://'); return; }
   communityAds = parseCommunityAds(communityAds);
   var existing = communityAds.find(function(ad){ return ad.id === _editingCommunityAdId; });
@@ -9738,6 +9858,7 @@ async function saveCommunityAd() {
     existing.message = message;
     existing.link = link;
     existing.cta = cta;
+    existing.imageUrl = _communityAdImageUrl;
   } else {
     communityAds.unshift({
       id: 'ad_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
@@ -9745,6 +9866,7 @@ async function saveCommunityAd() {
       message: message,
       link: link,
       cta: cta,
+      imageUrl: _communityAdImageUrl,
       active: true,
       createdAt: new Date().toISOString()
     });
@@ -9771,6 +9893,8 @@ function editCommunityAd(id) {
   var m = document.getElementById('communityAdMessage'); if (m) m.value = ad.message || '';
   var l = document.getElementById('communityAdLink'); if (l) l.value = ad.link || '';
   var c = document.getElementById('communityAdCta'); if (c) c.value = ad.cta || '';
+  _communityAdImageUrl = ad.imageUrl || '';
+  renderCommunityAdImagePreview();
   var btn = document.querySelector('.community-ad-actions .btn-primary');
   if (btn) btn.textContent = 'Save Changes';
   var editor = document.querySelector('.community-ad-editor');
@@ -9809,6 +9933,7 @@ function renderCommunityAdsAdmin() {
   }
   el.innerHTML = ads.map(function(ad) {
     return '<div class="community-ad-admin-row">' +
+      (ad.imageUrl ? '<img class="community-ad-admin-thumb" src="' + otsEscapeHtml(ad.imageUrl) + '" alt="' + otsEscapeHtml(ad.title || 'Community update') + '" loading="lazy" decoding="async">' : '<div class="community-ad-admin-thumb empty">No image</div>') +
       '<div class="community-ad-admin-main">' +
         '<div class="community-ad-admin-title">' + otsEscapeHtml(ad.title || 'Community Update') + '</div>' +
         (ad.message ? '<div class="community-ad-admin-msg">' + otsEscapeHtml(ad.message) + '</div>' : '') +
