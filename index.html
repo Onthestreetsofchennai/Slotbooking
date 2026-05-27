@@ -1925,7 +1925,9 @@ html, body {
 .lb-row{display:flex;align-items:center;gap:.7rem;padding:.85rem 1rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;transition:all .2s;min-width:0;}
 .lb-row:hover{border-color:rgba(245,119,161,.3);background:var(--surface2);}
 .lb-rank{font-size:1rem;font-weight:700;min-width:32px;text-align:center;color:var(--muted);}
-.lb-name{flex:1;font-weight:600;font-size:.95rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lb-name{flex:1;font-weight:600;font-size:.95rem;min-width:0;overflow:hidden;}
+.lb-title-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lb-role-line{margin-top:.18rem;color:var(--blue);font-size:.66rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .lb-right{display:flex;flex-direction:column;align-items:flex-end;gap:.18rem;flex-shrink:0;}
 .lb-shows{font-size:.75rem;color:var(--muted);white-space:nowrap;}
 .lb-pts-badge{font-size:.75rem;font-weight:700;padding:.22rem .65rem;border-radius:20px;background:rgba(112,186,244,.12);color:var(--blue);border:1px solid rgba(112,186,244,.25);white-space:nowrap;}
@@ -1975,6 +1977,7 @@ html, body {
 .pv-circle{width:260px;height:260px;border-radius:50%;overflow:hidden;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:5rem;font-weight:800;color:#fff;flex-shrink:0;box-shadow:0 0 60px rgba(0,0,0,.6);}
 .pv-circle img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
 .pv-name{font-family:'Playfair Display',serif;font-size:1.3rem;color:#fff;font-weight:700;text-align:center;letter-spacing:.02em;}
+.pv-role{font-size:.78rem;color:rgba(112,186,244,.95);font-weight:800;letter-spacing:.06em;text-align:center;text-transform:uppercase;margin-top:-.75rem;min-height:1em;}
 .pv-shows{font-size:.8rem;color:rgba(255,255,255,.55);text-align:center;margin-top:-.6rem;}
 .pv-close-hint{font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.5rem;}
 /* -- My Requests profile header -- */
@@ -2424,6 +2427,88 @@ html[data-admin-active] #memberLoginPage{
 }
 
 /* ======================================================
+   MONTHLY ZONE REPORTS
+   ====================================================== */
+.zone-report-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:.75rem;
+  margin-top:.9rem;
+}
+.zone-report-card{
+  position:relative;
+  border:1px solid rgba(255,255,255,.1);
+  background:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.028));
+  border-radius:8px;
+  padding:1rem;
+  overflow:hidden;
+}
+.zone-report-card:first-child{
+  border-color:rgba(78,203,113,.38);
+  box-shadow:0 14px 34px rgba(78,203,113,.08);
+}
+.zone-report-rank{
+  color:var(--blue);
+  font-size:.72rem;
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.zone-report-name{
+  margin-top:.45rem;
+  color:var(--text);
+  font-size:1rem;
+  font-weight:900;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.zone-report-points{
+  margin-top:.6rem;
+  color:var(--orange);
+  font-family:'Playfair Display',serif;
+  font-size:2rem;
+  line-height:1;
+  font-weight:900;
+}
+.zone-report-meta{
+  margin-top:.35rem;
+  color:var(--muted);
+  font-size:.72rem;
+  font-weight:700;
+}
+.zone-history-row{
+  display:grid;
+  grid-template-columns:84px minmax(0,1fr) auto;
+  gap:.75rem;
+  align-items:center;
+  padding:.65rem .2rem;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.zone-history-row strong{
+  color:var(--blue);
+  font-size:.76rem;
+}
+.zone-history-row span{
+  color:var(--text);
+  font-weight:800;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.zone-history-row em{
+  color:var(--green);
+  font-style:normal;
+  font-size:.78rem;
+  font-weight:900;
+}
+@media(max-width:700px){
+  .zone-report-grid{grid-template-columns:1fr;}
+  .zone-history-row{grid-template-columns:72px minmax(0,1fr);gap:.45rem;}
+  .zone-history-row em{grid-column:2;}
+}
+
+/* ======================================================
    MEMBER CHAT
    ====================================================== */
 .chat-wrap{
@@ -2438,12 +2523,20 @@ html[data-admin-active] #memberLoginPage{
   gap:1rem;
   margin-bottom:1.4rem;
 }
+.chat-heading{min-width:0;flex:1;}
 .chat-title{
   margin:.35rem 0 0;
   font-family:'Playfair Display',serif;
   font-size:clamp(2rem,5vw,3.4rem);
   line-height:.95;
   color:var(--text);
+}
+.chat-copy{
+  max-width:560px;
+  margin:.6rem 0 0;
+  color:var(--muted);
+  font-size:.9rem;
+  line-height:1.55;
 }
 .chat-layout{
   display:grid;
@@ -2463,6 +2556,27 @@ html[data-admin-active] #memberLoginPage{
   border-radius:8px;
   display:grid;
   grid-template-rows:auto minmax(260px, 1fr) auto;
+}
+.chat-panel-head{
+  padding:1rem 1rem .2rem;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.chat-panel-head strong{
+  display:block;
+  color:var(--text);
+  font-size:.92rem;
+  font-weight:900;
+}
+.chat-panel-head span{
+  display:block;
+  margin-top:.18rem;
+  color:var(--muted);
+  font-size:.68rem;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
 }
 .chat-search-row{padding:.9rem;border-bottom:1px solid rgba(255,255,255,.08);}
 .chat-search-input{
@@ -2500,7 +2614,10 @@ html[data-admin-active] #memberLoginPage{
   -webkit-tap-highlight-color:transparent;
 }
 .chat-member-row:hover,
-.chat-member-row.active{background:rgba(112,186,244,.08);}
+.chat-member-row.active{
+  background:rgba(112,186,244,.1);
+  box-shadow:inset 3px 0 0 var(--blue);
+}
 .chat-member-avatar,
 .chat-peer-avatar{
   width:44px;height:44px;border-radius:50%;
@@ -2544,6 +2661,11 @@ html[data-admin-active] #memberLoginPage{
   letter-spacing:.06em;
   text-transform:uppercase;
   cursor:pointer;
+}
+.chat-icon-btn:hover{
+  color:var(--text);
+  border-color:rgba(112,186,244,.34);
+  background:rgba(112,186,244,.08);
 }
 .chat-messages{
   overflow:auto;
@@ -2614,6 +2736,24 @@ html[data-admin-active] #memberLoginPage{
   padding:2rem 1rem;
   font-family:'DM Sans',sans-serif;
 }
+.chat-empty-hero{
+  margin:auto;
+  width:min(320px, 100%);
+  border:1px dashed rgba(112,186,244,.24);
+  border-radius:8px;
+  background:rgba(112,186,244,.045);
+}
+.chat-empty-hero strong{
+  display:block;
+  color:var(--text);
+  font-size:1rem;
+  margin-bottom:.35rem;
+}
+.chat-empty-hero span{
+  display:block;
+  color:var(--muted);
+  font-size:.84rem;
+}
 
 @media(max-width:700px){
   #page-chat .chat-wrap{
@@ -2623,12 +2763,16 @@ html[data-admin-active] #memberLoginPage{
   .chat-header{
     align-items:flex-start;
     margin-bottom:1rem;
+    gap:.65rem;
   }
+  .chat-back-btn{padding:.8rem .9rem;}
+  .chat-copy{font-size:.78rem;line-height:1.45;}
   .chat-layout{
     grid-template-columns:1fr;
     gap:.85rem;
     min-height:auto;
   }
+  .chat-panel-head{padding:.8rem .85rem .1rem;}
   .chat-member-list{
     display:flex;
     overflow-x:auto;
@@ -4413,7 +4557,7 @@ textarea{
         <div class="nav-avatar" id="navAvatar"><span id="navAvatarInitial"></span><img id="navAvatarImg" src="" alt="" style="display:none;"></div>
         <span class="nav-member-name" id="navMemberName"></span>
       </span>
-      <button class="member-logout-btn" id="memberLogoutBtn" onclick="memberLogout()">&#128245; Sign Out</button>
+      <button class="member-logout-btn" id="memberLogoutBtn" onclick="showPage('profile')" title="Profile">Profile</button>
       <button id="memberLoginNavBtn" onclick="showMemberLogin()" style="display:none;">&#128241; Member Login</button>
       <button id="myBookingsBtn" style="background:transparent;border:1px solid rgba(112,186,244,.4);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:.5rem 1.2rem;cursor:pointer;border-radius:3px;transition:all .2s;display:none;" onclick="showPage('myrequests')">&#128203; My Requests</button>
       <span class="notif-bell-wrap" id="notifBellWrap">
@@ -4657,7 +4801,6 @@ textarea{
         <div class="ms-stat"><div class="ms-stat-num" id="ms-points">-</div><div class="ms-stat-label">Points</div></div>
         <div class="ms-stat"><div class="ms-stat-num" id="ms-rank">#-</div><div class="ms-stat-label">My Rank</div></div>
       </div>
-      <button class="proof-upload-btn" onclick="openSharePointsModal()" style="margin:0 0 1rem;background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;">Share Points</button>
       <div id="myPerfList" class="my-perf-table" style="display:none;"></div>
     </div>
 
@@ -4678,16 +4821,23 @@ textarea{
 <div class="page" id="page-chat">
   <div class="chat-wrap">
     <div class="chat-header">
-      <button class="btn-back-home" onclick="showPage('home')" style="margin-bottom:0;">Back</button>
-      <div>
+      <button class="btn-back-home chat-back-btn" onclick="showPage('home')" style="margin-bottom:0;">Back</button>
+      <div class="chat-heading">
         <div class="section-label sl-blue" style="margin:0;">Member Chat</div>
         <h2 class="chat-title">Messages</h2>
+        <p class="chat-copy">Search members, keep show updates in one place, and report anything that needs admin support.</p>
       </div>
       <button class="lb-refresh" onclick="refreshChatPage(true)" style="white-space:nowrap;">Refresh</button>
     </div>
 
     <div class="chat-layout">
       <section class="chat-members-panel">
+        <div class="chat-panel-head">
+          <div>
+            <strong>Members</strong>
+            <span>Directory</span>
+          </div>
+        </div>
         <div class="chat-search-row">
           <input id="chatMemberSearch" class="chat-search-input" type="search" placeholder="Search member or zone..." oninput="renderChatMembers()">
         </div>
@@ -4711,7 +4861,10 @@ textarea{
           </div>
         </div>
         <div id="chatMessages" class="chat-messages">
-          <div class="chat-empty">No chat selected.</div>
+          <div class="chat-empty chat-empty-hero">
+            <strong>Select a member</strong>
+            <span>Your conversation will open here.</span>
+          </div>
         </div>
         <div class="chat-compose">
           <textarea id="chatInput" class="chat-input" rows="1" maxlength="700" placeholder="Type a message..." oninput="autoGrowChatInput(this)" onkeydown="handleChatInputKey(event)"></textarea>
@@ -4754,6 +4907,7 @@ textarea{
     <span id="pvInitial"></span>
   </div>
   <div class="pv-name" id="pvName"></div>
+  <div class="pv-role" id="pvRole"></div>
   <div class="pv-shows" id="pvShows"></div>
   <div class="pv-close-hint">Tap anywhere to close</div>
 </div>
@@ -4776,6 +4930,7 @@ textarea{
     <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:1.6rem;">
       <button onclick="showPage('myrequests')" style="background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;padding:.1rem .3rem;line-height:1;">Back</button>
       <span class="section-label sl-orange" style="margin:0;">My Profile</span>
+      <button onclick="memberLogout()" style="margin-left:auto;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.35);color:#ff7b7b;font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:.5rem .75rem;border-radius:4px;cursor:pointer;">Sign Out</button>
     </div>
 
     <!-- Avatar + completion bar -->
@@ -4797,7 +4952,6 @@ textarea{
         </div>
         <div id="profCompHint" style="font-size:.68rem;color:var(--muted);margin-top:.35rem;text-align:right;min-height:1em;"></div>
       </div>
-      <button class="proof-upload-btn" onclick="openSharePointsModal()" style="width:min(340px,100%);background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;">Share Points</button>
     </div>
 
     <!-- BASIC INFO -->
@@ -4845,8 +4999,18 @@ textarea{
         <div style="font-size:.63rem;color:var(--muted);text-align:right;margin-top:.2rem;"><span id="pf-bio-count">0</span>/200</div>
       </div>
       <div class="prof-field">
-        <label class="prof-label">Instrument / Role</label>
-        <input id="pf-instrument" class="prof-input" type="text" placeholder="e.g. Acoustic Guitar, Vocalist..." maxlength="80">
+        <label class="prof-label">Performer Type</label>
+        <select id="pf-role" class="prof-input" onchange="updateProfileRoleFields()" style="appearance:none;-webkit-appearance:none;cursor:pointer;">
+          <option value="">- Select -</option>
+          <option value="singer">Singer</option>
+          <option value="instrumentalist">Instrumentalist</option>
+          <option value="singer_instrumentalist">Singer / Instrumentalist</option>
+          <option value="volunteer">Volunteer</option>
+        </select>
+      </div>
+      <div class="prof-field" id="pf-instrument-wrap">
+        <label class="prof-label">Instrument</label>
+        <input id="pf-instrument" class="prof-input" type="text" placeholder="e.g. Acoustic Guitar, Keyboard, Cajon..." maxlength="80">
       </div>
     </div>
 
@@ -5171,7 +5335,46 @@ textarea{
     <!-- POINTS TAB -->
     <div id="atab-content-points" style="display:none;">
       <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;margin-bottom:.3rem;"> Points Management</div>
-      <div style="font-size:.82rem;color:var(--muted);margin-bottom:2rem;">Give volunteer bonus points or withdraw mistakenly approved points.</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:2rem;">Monthly zone reports, CSV point imports, volunteer bonus points and point corrections.</div>
+
+      <!-- Monthly Zone Reports -->
+      <div class="panel perm-points-edit" style="margin-bottom:1.8rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.8rem;flex-wrap:wrap;gap:.5rem;">
+          <div>
+            <div style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;">Monthly Zone Reports</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem;">Zone points reset month by month. Each approved point is saved with the member zone at that time.</div>
+          </div>
+          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+            <input type="month" class="form-input" id="zone-report-month" style="width:155px;margin-bottom:0;font-size:.78rem;padding:.45rem .65rem;">
+            <button onclick="loadZoneMonthlyReport()" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:.75rem;padding:.45rem .9rem;border-radius:3px;cursor:pointer;">Load</button>
+            <button onclick="saveZoneMonthlySnapshot()" style="background:var(--grad);border:none;color:#fff;font-family:'DM Sans',sans-serif;font-size:.75rem;font-weight:800;padding:.5rem .9rem;border-radius:3px;cursor:pointer;">Save Snapshot</button>
+          </div>
+        </div>
+        <div id="zoneMonthlyReport"><div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Choose a month and load the report.</div></div>
+        <div style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;margin:1.2rem 0 .5rem;">Winning History</div>
+        <div id="zoneWinningHistory"><div style="color:var(--muted);font-size:.83rem;text-align:center;padding:1rem;">Saved monthly winners will appear here.</div></div>
+      </div>
+
+      <!-- Zone CSV Import -->
+      <div class="panel perm-points-edit" style="margin-bottom:1.8rem;">
+        <div style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;margin-bottom:.3rem;">Import Zone Points CSV</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:1rem;">CSV columns: <strong>name, phone, points, reason</strong>. Points are added to the member and locked to their current zone for the selected month.</div>
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.75rem;">
+          <div style="min-width:155px;">
+            <label class="form-label">Report Month</label>
+            <input type="month" class="form-input" id="zone-csv-month" style="margin-bottom:0;">
+          </div>
+          <div style="flex:1;min-width:220px;">
+            <label class="form-label">CSV File</label>
+            <input type="file" class="form-input" id="zone-csv-file" accept=".csv,text/csv" onchange="handleZonePointsCsvFile(this.files && this.files[0])" style="margin-bottom:0;">
+          </div>
+        </div>
+        <textarea class="form-input" id="zone-csv-text" rows="5" placeholder="name,phone,points,reason&#10;Arjun,9876543210,3,Chapter lead credit"></textarea>
+        <div style="display:flex;gap:.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:.75rem;">
+          <div id="zone-csv-status" style="font-size:.78rem;color:var(--muted);"></div>
+          <button onclick="importZonePointsCsv()" style="background:var(--grad);color:#fff;border:none;font-family:'DM Sans',sans-serif;font-size:.8rem;font-weight:800;padding:.65rem 1.2rem;border-radius:4px;cursor:pointer;">Import Points</button>
+        </div>
+      </div>
 
       <!-- Give Volunteer Points -->
       <div class="panel perm-points-edit" style="margin-bottom:1.8rem;">
@@ -5193,18 +5396,6 @@ textarea{
           <button onclick="giveVolunteerPoints()" style="background:var(--grad);color:#fff;border:none;font-family:'DM Sans',sans-serif;font-size:.8rem;font-weight:700;padding:.65rem 1.4rem;border-radius:4px;cursor:pointer;white-space:nowrap;">+ Give Points</button>
         </div>
         <div id="vp-status" style="font-size:.78rem;margin-top:.6rem;"></div>
-      </div>
-
-      <!-- Member Point Share Requests -->
-      <div class="panel perm-points-edit" style="margin-bottom:1.8rem;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.8rem;flex-wrap:wrap;gap:.5rem;">
-          <div>
-            <div style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;">Point Share Requests</div>
-            <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem;">Approve member requests to share points. Show count will not transfer.</div>
-          </div>
-          <button onclick="loadPointTransferRequests()" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:.75rem;padding:.45rem .9rem;border-radius:3px;cursor:pointer;">Refresh</button>
-        </div>
-        <div id="pointTransferList"><div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Click Refresh to load share requests.</div></div>
       </div>
 
       <!-- Approved Claims - Withdraw -->
@@ -5520,25 +5711,6 @@ textarea{
     <div class="modal-actions sticky-actions">
       <button class="btn-cancel" type="button" onclick="closeEditPerformersModal()">Cancel</button>
       <button class="btn-confirm" id="edit-perf-save" type="button" onclick="saveEditPerformers()">Save Changes</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="sharePointsModal" onclick="if(event.target===this)closeSharePointsModal()">
-  <div class="modal modal-scroll" style="max-width:430px;">
-    <button class="admin-modal-close" type="button" onclick="closeSharePointsModal()" aria-label="Close share points">&times;</button>
-    <div class="modal-title">Share Points</div>
-    <div class="modal-sub">Send a request to share points with another registered member. Admin approval is required.</div>
-    <label class="form-label">Receiver Mobile Number</label>
-    <input type="tel" class="form-input" id="share-points-phone" placeholder="10-digit mobile number">
-    <label class="form-label">Points to Share</label>
-    <input type="number" class="form-input" id="share-points-amount" min="0.1" step="0.1" placeholder="e.g. 1">
-    <label class="form-label">Reason</label>
-    <textarea class="form-input" id="share-points-reason" rows="3" placeholder="Why are you sharing these points?"></textarea>
-    <div id="share-points-status" style="font-size:.78rem;color:var(--muted);margin-top:.4rem;"></div>
-    <div class="modal-actions sticky-actions">
-      <button class="btn-cancel" type="button" onclick="closeSharePointsModal()">Cancel</button>
-      <button class="btn-confirm" id="share-points-submit" type="button" onclick="submitPointShareRequest()">Send Request</button>
     </div>
   </div>
 </div>
@@ -7628,8 +7800,27 @@ window.addEventListener('focus', function(){
 // ========================================
 
 var _lbAllRows = []; // cached for search filter
+var _lbZoneRows = [];
 
-function _memberZoneForRow(p) {
+function memberRoleLabel(roleType, instrument) {
+  var role = String(roleType || '').trim();
+  var inst = String(instrument || '').trim();
+  var label = '';
+  if (role === 'singer') label = 'Singer';
+  else if (role === 'instrumentalist') label = 'Instrumentalist';
+  else if (role === 'singer_instrumentalist') label = 'Singer / Instrumentalist';
+  else if (role === 'volunteer') label = 'Volunteer';
+  else label = '';
+  if ((role === 'instrumentalist' || role === 'singer_instrumentalist') && inst) return label + ' - ' + inst;
+  if (!label && inst) return inst;
+  return label;
+}
+
+function roleNeedsInstrument(roleType) {
+  return roleType === 'instrumentalist' || roleType === 'singer_instrumentalist';
+}
+
+function _memberProfileForRow(p) {
   var pNorm = _normPhone((p && p.phone) || '');
   var pName = ((p && p.name) || '').trim().toLowerCase();
   var hit = members.find(function(m){
@@ -7637,18 +7828,29 @@ function _memberZoneForRow(p) {
     var mName = (m.name || '').trim().toLowerCase();
     return (pNorm && mNorm && pNorm === mNorm) || (!!pName && !!mName && pName === mName);
   });
+  return hit || {};
+}
+
+function _memberZoneForRow(p) {
+  var hit = _memberProfileForRow(p);
   return hit ? (hit.zoneCurrent || '') : '';
 }
 
 function _buildZoneBattle(rows) {
   var names = parseZoneNames(zoneNames);
-  var zones = { 'No Zone': { points:0, members:[] } };
-  names.forEach(function(z){ zones[z] = { points:0, members:[] }; });
+  var zones = { 'No Zone': { points:0, members:[], memberCount:0 } };
+  names.forEach(function(z){ zones[z] = { points:0, members:[], memberCount:0 }; });
   rows.forEach(function(p){
-    var zone = p.zone || 'No Zone';
-    if (!zones[zone]) zones[zone] = { points:0, members:[] };
-    zones[zone].points += Number(p.shows) || 0;
-    zones[zone].members.push({ name:p.name || '-', points:Number(p.shows)||0 });
+    var zone = p.zone || p.zone_name || 'No Zone';
+    if (!zones[zone]) zones[zone] = { points:0, members:[], memberCount:0 };
+    var points = Number(p.total_points != null ? p.total_points : p.shows) || 0;
+    zones[zone].points += points;
+    if (p.member_count != null) {
+      zones[zone].memberCount += Number(p.member_count) || 0;
+    } else {
+      zones[zone].members.push({ name:p.name || '-', points:points });
+      zones[zone].memberCount += 1;
+    }
   });
   Object.keys(zones).forEach(function(z){
     zones[z].members.sort(function(a,b){ return b.points - a.points; });
@@ -7659,11 +7861,11 @@ function _buildZoneBattle(rows) {
     var z = zones[zone] || { points:0, members:[] };
     var roster = z.members.slice(0,4).map(function(m){
       return '<span class="zone-battle-chip">' + m.name + ' - ' + m.points + ' pt' + (m.points!==1?'s':'') + '</span>';
-    }).join('') || '<span style="color:var(--muted);">No performers yet</span>';
+    }).join('') || '<span style="color:var(--muted);">Monthly total</span>';
     return '<div class="zone-battle-card">' +
       '<div class="zone-battle-title">' + zone + '</div>' +
       '<div class="zone-battle-points">' + z.points + '</div>' +
-      '<div class="zone-battle-meta">Total zone points - ' + z.members.length + ' member' + (z.members.length!==1?'s':'') + '</div>' +
+      '<div class="zone-battle-meta">This month - ' + z.memberCount + ' member' + (z.memberCount!==1?'s':'') + '</div>' +
       '<div class="zone-battle-roster">' + roster + '</div>' +
     '</div>';
   }).join('') + '</div>';
@@ -7690,14 +7892,23 @@ async function loadLeaderboard() {
     const rows = await neonSQL(
       "SELECT c.member_name AS name, c.member_phone AS phone, SUM(COALESCE(c.points,1)) AS shows, COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show')='show') AS show_count FROM claims c WHERE c.status='approved' AND c.member_name IS NOT NULL AND c.member_name <> '' GROUP BY c.member_name, c.member_phone ORDER BY shows DESC LIMIT 2000"
     );
+    var monthRange = monthRangeFromKey(monthKeyFromDate());
+    var zoneRows = await neonSQL(
+      "SELECT COALESCE(NULLIF(c.zone_name,''),NULLIF(m.zone_current,''),'No Zone') AS zone_name, SUM(COALESCE(c.points,1)) AS total_points, COUNT(DISTINCT c.member_phone) AS member_count " +
+      "FROM claims c LEFT JOIN members m ON RIGHT(REGEXP_REPLACE(c.member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE(m.phone,'[^0-9]','','g'),10) " +
+      "WHERE c.status='approved' AND c.created_at >= $1 AND c.created_at < $2 GROUP BY 1 ORDER BY total_points DESC, zone_name ASC",
+      [monthRange.start, monthRange.end]
+    );
+    _lbZoneRows = zoneRows || [];
     _lbAllRows = rows.map(function(r){
-      var zone = _memberZoneForRow(r);
-      return Object.assign({}, r, { zone: zone });
+      var prof = _memberProfileForRow(r);
+      return Object.assign({}, r, { zone: prof.zoneCurrent || '', roleType: prof.roleType || '', instrument: prof.instrument || '' });
     });
     try { localStorage.setItem('ots_leaderboard_cache', JSON.stringify(_lbAllRows)); } catch(_){}
     renderLeaderboard(_lbAllRows);
     if (memberLoggedIn && memberPhone) checkShowMilestone();
   } catch(e) {
+    _lbZoneRows = [];
     const map = {};
     allBookings.filter(function(b){ return b.proofClaimed && b.name; }).forEach(function(b){
       const key = (_normPhone(b.phone)||b.name.toLowerCase());
@@ -7739,19 +7950,21 @@ function renderLeaderboard(rows) {
       : '<span style="font-size:.8rem;">' + initial + '</span>';
     const safeName  = (p.name||'').replace(/'/g,"\'").replace(/"/g,'&quot;');
     const safePhone = (p.phone||'').replace(/'/g,"\'");
-    const avatarHtml = '<div class="lb-avatar" style="cursor:pointer;" onclick="openPhotoViewerForMember(\'' + safeName + '\',\'' + safePhone + '\',' + shows + ')" title="View profile">' + avatarInner + '</div>';
+    const roleLabel = memberRoleLabel(p.roleType || '', p.instrument || '');
+    const safeRole = roleLabel.replace(/'/g,"\'").replace(/"/g,'&quot;');
+    const avatarHtml = '<div class="lb-avatar" style="cursor:pointer;" onclick="openPhotoViewerForMember(\'' + safeName + '\',\'' + safePhone + '\',' + shows + ',\'' + safeRole + '\')" title="View profile">' + avatarInner + '</div>';
     const zoneBadge = '<span class="lb-zone-badge">' + (p.zone || 'No Zone') + '</span>';
     return '<div class="lb-row' + topCls + meCls + '" data-name="' + ((p.name||'').toLowerCase()) + '">' +
       '<div class="lb-medal">' + (medal || ('<span style="font-size:.72rem;color:var(--muted);">#'+rank+'</span>')) + '</div>' +
       avatarHtml +
-      '<div class="lb-name">' + (p.name||'-') + meTag + zoneBadge + '</div>' +
+      '<div class="lb-name"><div class="lb-title-name">' + (p.name||'-') + meTag + zoneBadge + '</div>' + (roleLabel ? '<div class="lb-role-line">' + otsEscapeHtml(roleLabel) + '</div>' : '') + '</div>' +
       '<div class="lb-right">' +
         '<div class="lb-pts-badge">' + shows + ' pt' + (shows!==1?'s':'') + '</div>' +
         '<div class="lb-shows">' + showCount + ' show' + (showCount!==1?'s':'') + '</div>' +
       '</div>' +
     '</div>';
   });
-  el.innerHTML = _buildZoneBattle(rows) + '<div class="lb-list-all">' + items.join('') + '</div>';
+  el.innerHTML = _buildZoneBattle(_lbZoneRows && _lbZoneRows.length ? _lbZoneRows : rows) + '<div class="lb-list-all">' + items.join('') + '</div>';
 }
 
 function filterLeaderboard(q) {
@@ -7898,10 +8111,11 @@ async function loadMemberStats() {
   try {
     var normP = _normPhone(memberPhone);
     // Fetch avatar + profile fields  update nav, My Requests header, legacy display
-    neonSQL("SELECT avatar_url,bio,instrument,instagram,blood_group,date_of_birth,address,zone_current,zone_request,zone_request_reason,zone_request_status,id_proof_url FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 LIMIT 1", [normP]).then(function(aRows) {
+    neonSQL("SELECT avatar_url,bio,role_type,instrument,instagram,blood_group,date_of_birth,address,zone_current,zone_request,zone_request_reason,zone_request_status,id_proof_url FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 LIMIT 1", [normP]).then(function(aRows) {
       if (!aRows || !aRows[0]) return;
       var url = aRows[0].avatar_url || '';
       memberBio        = aRows[0].bio           || '';
+      memberRoleType   = aRows[0].role_type     || '';
       memberInstrument = aRows[0].instrument    || '';
       memberInstagram  = aRows[0].instagram     || '';
       memberBloodGroup = aRows[0].blood_group   || '';
@@ -7971,106 +8185,6 @@ async function loadMemberStats() {
     if (msPoints) msPoints.textContent = '-';
     if (msRank)   msRank.textContent   = '#-';
     console.warn('[OTS] loadMemberStats:', e);
-  }
-}
-
-function pointTransferId() {
-  try { if (crypto && crypto.randomUUID) return 'PT-' + crypto.randomUUID(); } catch(_) {}
-  return 'PT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-}
-
-async function getMemberAvailablePoints(phone) {
-  var norm = _normPhone(phone || '');
-  if (!norm) return 0;
-  var rows = await neonSQL(
-    "SELECT COALESCE(SUM(COALESCE(points,1)),0) AS total FROM claims WHERE member_phone=$1 AND status='approved'",
-    [norm]
-  );
-  var total = Number(rows && rows[0] ? rows[0].total : 0) || 0;
-  return Math.round(total * 100) / 100;
-}
-
-function openSharePointsModal() {
-  if (!memberLoggedIn) {
-    showToast('', 'Member Login Needed', 'Please login to share points.');
-    return;
-  }
-  var modal = document.getElementById('sharePointsModal');
-  if (!modal) return;
-  var phone = document.getElementById('share-points-phone');
-  var amount = document.getElementById('share-points-amount');
-  var reason = document.getElementById('share-points-reason');
-  var status = document.getElementById('share-points-status');
-  if (phone) phone.value = '';
-  if (amount) amount.value = '';
-  if (reason) reason.value = '';
-  if (status) status.textContent = 'Show count will not transfer. Only points are shared after admin approval.';
-  modal.classList.add('show');
-}
-
-function closeSharePointsModal() {
-  var modal = document.getElementById('sharePointsModal');
-  if (modal) modal.classList.remove('show');
-}
-
-async function submitPointShareRequest() {
-  if (!memberLoggedIn) {
-    showToast('', 'Member Login Needed', 'Please login to share points.');
-    return;
-  }
-  var btn = document.getElementById('share-points-submit');
-  var status = document.getElementById('share-points-status');
-  var receiverPhone = _normPhone((document.getElementById('share-points-phone') && document.getElementById('share-points-phone').value) || '');
-  var points = Number((document.getElementById('share-points-amount') && document.getElementById('share-points-amount').value) || 0);
-  var reason = ((document.getElementById('share-points-reason') && document.getElementById('share-points-reason').value) || '').trim();
-  var senderPhone = _normPhone(memberPhone || '');
-  if (!receiverPhone || receiverPhone.length < 10) {
-    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Enter the registered mobile number of the member receiving points.'; }
-    return;
-  }
-  if (receiverPhone === senderPhone) {
-    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'You cannot share points to your own account.'; }
-    return;
-  }
-  if (!isFinite(points) || points <= 0) {
-    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Enter points greater than 0.'; }
-    return;
-  }
-  points = Math.round(points * 100) / 100;
-  if (!reason) {
-    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Please enter a short reason.'; }
-    return;
-  }
-  if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
-  if (status) { status.style.color = 'var(--muted)'; status.textContent = 'Checking member and available points...'; }
-  try {
-    var available = await getMemberAvailablePoints(senderPhone);
-    if (points > available) {
-      if (status) { status.style.color = '#ff4b4b'; status.textContent = 'You have only ' + available + ' point(s) available to share.'; }
-      return;
-    }
-    var receiverRows = await neonSQL(
-      "SELECT name, phone FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 AND active IS NOT FALSE LIMIT 1",
-      [receiverPhone]
-    );
-    if (!receiverRows.length) {
-      if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Receiver is not registered as an active member.'; }
-      return;
-    }
-    var receiver = receiverRows[0];
-    var transferId = pointTransferId();
-    await neonSQL(
-      "INSERT INTO point_transfers (id,sender_phone,sender_name,receiver_phone,receiver_name,points,reason,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')",
-      [transferId, senderPhone, memberName || memberEmail || senderPhone, receiverPhone, receiver.name || receiverPhone, points, reason]
-    );
-    closeSharePointsModal();
-    showToast('', 'Request Sent', 'Admin will review your point sharing request.');
-    try { notifyAdminPointTransfer({ id: transferId, name: memberName || senderPhone, phone: senderPhone, receiverName: receiver.name || '', receiverPhone: receiverPhone, points: points, reason: reason }); } catch(_) {}
-  } catch(e) {
-    console.error('[OTS] point share request:', e);
-    if (status) { status.style.color = '#ff4b4b'; status.textContent = 'Could not send request. Please try again.'; }
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Send Request'; }
   }
 }
 
@@ -8888,7 +9002,7 @@ function dismissNotif(id) {
 // ========================================
 // DB MIGRATIONS (run once on startup)
 // ========================================
-const MIGRATION_VERSION = '2026-05-26-remove-private-shows-1';
+const MIGRATION_VERSION = '2026-05-27-member-role-profile-1';
 async function runMigrations(force) {
   try { if (!force && localStorage.getItem('ots_migration_version') === MIGRATION_VERSION) return; } catch(e) {}
   const run = async (sql) => { try { await neonSQL(sql); } catch(e) { console.warn('Migration skipped:', e && (e.message||e)); } };
@@ -8918,6 +9032,7 @@ async function runMigrations(force) {
   await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''");
   await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS genre TEXT DEFAULT ''");
   await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS instrument TEXT DEFAULT ''");
+  await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS role_type TEXT DEFAULT ''");
   await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS instagram TEXT DEFAULT ''");
   await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS blood_group TEXT DEFAULT ''");
   await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS date_of_birth TEXT DEFAULT ''");
@@ -8931,16 +9046,15 @@ async function runMigrations(force) {
   await run("ALTER TABLE members ADD COLUMN IF NOT EXISTS id_proof_url TEXT DEFAULT ''");
   await run("ALTER TABLE claims ADD COLUMN IF NOT EXISTS claim_type TEXT DEFAULT 'show'");
   await run("ALTER TABLE claims ADD COLUMN IF NOT EXISTS reason TEXT DEFAULT ''");
+  await run("ALTER TABLE claims ADD COLUMN IF NOT EXISTS zone_name TEXT DEFAULT ''");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_at TIMESTAMPTZ");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_lat DOUBLE PRECISION");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_lng DOUBLE PRECISION");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_accuracy DOUBLE PRECISION");
   await run("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_map_url TEXT DEFAULT ''");
   await run("ALTER TABLE claims ADD COLUMN IF NOT EXISTS points NUMERIC DEFAULT 1");
-  await run("CREATE TABLE IF NOT EXISTS point_transfers (id TEXT PRIMARY KEY, sender_phone TEXT NOT NULL, sender_name TEXT DEFAULT '', receiver_phone TEXT NOT NULL, receiver_name TEXT DEFAULT '', points NUMERIC NOT NULL DEFAULT 0, reason TEXT DEFAULT '', status TEXT DEFAULT 'pending', created_at TIMESTAMPTZ DEFAULT NOW(), reviewed_at TIMESTAMPTZ, reviewed_by TEXT DEFAULT '')");
-  await run("CREATE INDEX IF NOT EXISTS idx_point_transfers_status ON point_transfers(status, created_at)");
-  await run("CREATE INDEX IF NOT EXISTS idx_point_transfers_sender ON point_transfers(sender_phone)");
-  await run("CREATE INDEX IF NOT EXISTS idx_point_transfers_receiver ON point_transfers(receiver_phone)");
+  await run("UPDATE claims c SET zone_name=COALESCE(NULLIF(m.zone_current,''),'No Zone') FROM members m WHERE RIGHT(REGEXP_REPLACE(c.member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE(m.phone,'[^0-9]','','g'),10) AND COALESCE(c.zone_name,'')=''");
+  await run("CREATE TABLE IF NOT EXISTS zone_monthly_reports (month_key TEXT NOT NULL, zone_name TEXT NOT NULL, total_points NUMERIC DEFAULT 0, member_count INTEGER DEFAULT 0, rank INTEGER DEFAULT 0, saved_at TIMESTAMPTZ DEFAULT NOW(), saved_by TEXT DEFAULT '', PRIMARY KEY(month_key, zone_name))");
   await run("CREATE TABLE IF NOT EXISTS dismissed_requests (user_key TEXT NOT NULL, booking_id TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (user_key, booking_id))");
   await run("CREATE TABLE IF NOT EXISTS dismissed_notifications (user_key TEXT NOT NULL, booking_id TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (user_key, booking_id))");
   await run("CREATE TABLE IF NOT EXISTS member_chats (id TEXT PRIMARY KEY, member_a_phone TEXT NOT NULL, member_b_phone TEXT NOT NULL, member_a_name TEXT DEFAULT '', member_b_name TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), last_message TEXT DEFAULT '')");
@@ -9716,7 +9830,7 @@ function switchAdminTab(tab) {
   if (tab==='claims')      loadAdminClaims();
   if (tab==='photos')      { renderPhotoManager(); loadPerfPhotos(); }
   if (tab==='members')     loadMembers();
-  if (tab==='points')      { loadPointTransferRequests(); loadWithdrawList(); }
+  if (tab==='points')      { initZoneMonthInputs(); loadZoneMonthlyReport(); loadZoneWinningHistory(); loadWithdrawList(); }
   if (tab==='errors')      loadClientErrorReports();
   if (tab==='settings')    {
     var ph=document.getElementById('settings-admin-phone'); if(ph) ph.value=adminPhone||'';
@@ -9832,7 +9946,8 @@ async function approveClaim(claimId) {
     var performerCount = Math.max(1, (groupClaims || []).length);
     var totalPool = bookingPointPool(bk);
     var pts = splitShowPoints(totalPool, performerCount);
-    await neonSQL("UPDATE claims SET status='approved', points=$2 WHERE id=$1", [claimId, pts]);
+    var zoneName = await getMemberZoneName(claim.member_phone || '');
+    await neonSQL("UPDATE claims SET status='approved', points=$2, zone_name=$3 WHERE id=$1", [claimId, pts, zoneName]);
     await rebalanceApprovedShowClaims(bookingId, bk, true);
     // Mark the booking as proof_claimed=true so the member sees " Points Claimed"
     await dbPatch('bookings', bookingId, { proof_claimed: true });
@@ -9893,6 +10008,219 @@ async function rejectClaim(claimId) {
 
 // -- Points Management ---------------------------------------------------------
 var _withdrawAllRows = [];
+var _zoneMonthlyRows = [];
+
+function monthKeyFromDate(value) {
+  var d = value ? new Date(value) : new Date();
+  if (isNaN(d.getTime())) d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function monthRangeFromKey(monthKey) {
+  var parts = String(monthKey || monthKeyFromDate()).split('-').map(Number);
+  var y = parts[0] || new Date().getFullYear();
+  var m = (parts[1] || (new Date().getMonth() + 1)) - 1;
+  var start = new Date(y, m, 1);
+  var end = new Date(y, m + 1, 1);
+  return { start: start.toISOString(), end: end.toISOString(), key: y + '-' + String(m + 1).padStart(2, '0') };
+}
+function initZoneMonthInputs() {
+  var key = monthKeyFromDate();
+  var report = document.getElementById('zone-report-month');
+  var csv = document.getElementById('zone-csv-month');
+  if (report && !report.value) report.value = key;
+  if (csv && !csv.value) csv.value = key;
+}
+async function getMemberZoneName(phone) {
+  var norm = _normPhone(phone || '');
+  if (!norm) return 'No Zone';
+  try {
+    var rows = await neonSQL(
+      "SELECT COALESCE(NULLIF(zone_current,''),'No Zone') AS zone FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 LIMIT 1",
+      [norm]
+    );
+    return (rows && rows[0] && rows[0].zone) || 'No Zone';
+  } catch(e) {
+    return 'No Zone';
+  }
+}
+async function findMemberForPoints(phone, name) {
+  var norm = _normPhone(phone || '');
+  var rows = [];
+  if (norm) {
+    rows = await neonSQL(
+      "SELECT name, phone, email, COALESCE(NULLIF(zone_current,''),'No Zone') AS zone FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 AND active IS NOT FALSE LIMIT 1",
+      [norm]
+    );
+  }
+  if ((!rows || !rows.length) && name) {
+    rows = await neonSQL(
+      "SELECT name, phone, email, COALESCE(NULLIF(zone_current,''),'No Zone') AS zone FROM members WHERE LOWER(name)=LOWER($1) AND active IS NOT FALSE LIMIT 1",
+      [String(name || '').trim()]
+    );
+  }
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function loadZoneMonthlyReport() {
+  if (!hasAdminPerm('points')) return;
+  initZoneMonthInputs();
+  var el = document.getElementById('zoneMonthlyReport');
+  var monthInput = document.getElementById('zone-report-month');
+  var range = monthRangeFromKey(monthInput && monthInput.value);
+  if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Loading zone report...</div>';
+  try {
+    var rows = await neonSQL(
+      "SELECT COALESCE(NULLIF(c.zone_name,''),NULLIF(m.zone_current,''),'No Zone') AS zone_name, " +
+      "SUM(COALESCE(c.points,1)) AS total_points, COUNT(DISTINCT c.member_phone) AS member_count " +
+      "FROM claims c LEFT JOIN members m ON RIGHT(REGEXP_REPLACE(c.member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE(m.phone,'[^0-9]','','g'),10) " +
+      "WHERE c.status='approved' AND c.created_at >= $1 AND c.created_at < $2 " +
+      "GROUP BY 1 ORDER BY total_points DESC, zone_name ASC",
+      [range.start, range.end]
+    );
+    _zoneMonthlyRows = (rows || []).map(function(r, i) {
+      return { rank:i+1, zoneName:r.zone_name || 'No Zone', totalPoints:Number(r.total_points || 0), memberCount:Number(r.member_count || 0) };
+    });
+    renderZoneMonthlyReport(range.key);
+  } catch(e) {
+    console.error('[OTS] zone monthly report:', e);
+    if (el) el.innerHTML = '<div style="color:#ff7b7b;font-size:.83rem;text-align:center;padding:2rem;">Could not load zone report.</div>';
+  }
+}
+function renderZoneMonthlyReport(monthKey) {
+  var el = document.getElementById('zoneMonthlyReport');
+  if (!el) return;
+  if (!_zoneMonthlyRows.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">No approved points for ' + otsEscapeHtml(monthKey) + ' yet.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="zone-report-grid">' + _zoneMonthlyRows.map(function(r) {
+    return '<div class="zone-report-card">' +
+      '<div class="zone-report-rank">#' + r.rank + '</div>' +
+      '<div class="zone-report-name">' + otsEscapeHtml(r.zoneName) + '</div>' +
+      '<div class="zone-report-points">' + (Math.round(r.totalPoints * 100) / 100) + '</div>' +
+      '<div class="zone-report-meta">' + r.memberCount + ' member' + (r.memberCount === 1 ? '' : 's') + ' contributed</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+async function saveZoneMonthlySnapshot() {
+  if (!requireAdminPerm('points', 'zone monthly reports')) return;
+  var monthInput = document.getElementById('zone-report-month');
+  var range = monthRangeFromKey(monthInput && monthInput.value);
+  await loadZoneMonthlyReport();
+  if (!_zoneMonthlyRows.length) { showToast('', 'No Data', 'No zone points to save for this month.'); return; }
+  if (!confirm('Save monthly zone report for ' + range.key + '? Existing snapshot for this month will be replaced.')) return;
+  try {
+    await neonSQL('DELETE FROM zone_monthly_reports WHERE month_key=$1', [range.key]);
+    for (var i = 0; i < _zoneMonthlyRows.length; i++) {
+      var r = _zoneMonthlyRows[i];
+      await neonSQL(
+        'INSERT INTO zone_monthly_reports (month_key,zone_name,total_points,member_count,rank,saved_by) VALUES ($1,$2,$3,$4,$5,$6)',
+        [range.key, r.zoneName, r.totalPoints, r.memberCount, r.rank, currentAdminUsername || 'admin']
+      );
+    }
+    logAdminAction('save_zone_monthly_report', range.key + ' - ' + _zoneMonthlyRows[0].zoneName + ' won').catch(function(){});
+    showToast('', 'Report Saved', 'Winning history updated for ' + range.key + '.');
+    loadZoneWinningHistory();
+  } catch(e) {
+    console.error('[OTS] save zone snapshot:', e);
+    showToast('', 'Save Failed', 'Could not save the monthly report.');
+  }
+}
+async function loadZoneWinningHistory() {
+  var el = document.getElementById('zoneWinningHistory');
+  if (!el) return;
+  try {
+    var rows = await neonSQL("SELECT month_key, zone_name, total_points, member_count, rank FROM zone_monthly_reports ORDER BY month_key DESC, rank ASC LIMIT 120");
+    if (!rows.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:1rem;">No saved monthly reports yet.</div>';
+      return;
+    }
+    var winners = rows.filter(function(r){ return Number(r.rank) === 1; });
+    el.innerHTML = winners.map(function(r){
+      return '<div class="zone-history-row"><strong>' + otsEscapeHtml(r.month_key) + '</strong><span>' + otsEscapeHtml(r.zone_name) + '</span><em>' + (Math.round(Number(r.total_points || 0) * 100) / 100) + ' pts</em></div>';
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:1rem;">No saved monthly reports yet.</div>';
+  }
+}
+function handleZonePointsCsvFile(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = String(e.target && e.target.result || '');
+    var box = document.getElementById('zone-csv-text');
+    if (box) box.value = text;
+    var status = document.getElementById('zone-csv-status');
+    if (status) status.textContent = 'CSV loaded. Check and click Import Points.';
+  };
+  reader.readAsText(file);
+}
+function parseZonePointsCsv(text) {
+  var records = parseCSVRecords(text || '');
+  if (!records.length) return [];
+  var first = records[0].map(function(c){ return String(c || '').toLowerCase().trim(); });
+  var hasHeader = first.some(function(c){ return ['name','phone','mobile','points','point','reason'].indexOf(c) > -1; });
+  var headers = hasHeader ? first : ['name','phone','points','reason'];
+  var rows = hasHeader ? records.slice(1) : records;
+  function idx(names, fallback) {
+    for (var i=0;i<headers.length;i++) if (names.indexOf(headers[i]) > -1) return i;
+    return fallback;
+  }
+  var nameIdx = idx(['name','member name'], 0);
+  var phoneIdx = idx(['phone','mobile','number','member mobile'], 1);
+  var pointsIdx = idx(['points','point','pts'], 2);
+  var reasonIdx = idx(['reason','notes','note'], 3);
+  return rows.map(function(cols) {
+    return {
+      name: cleanCSVCell(cols[nameIdx] || ''),
+      phone: cleanCSVCell(cols[phoneIdx] || ''),
+      points: Number(cleanCSVCell(cols[pointsIdx] || '0')),
+      reason: cleanCSVCell(cols[reasonIdx] || 'Zone lead points')
+    };
+  }).filter(function(r){ return r.name || r.phone || r.points; });
+}
+async function importZonePointsCsv() {
+  if (!requireAdminPerm('points', 'zone point CSV import')) return;
+  var status = document.getElementById('zone-csv-status');
+  var text = (document.getElementById('zone-csv-text') && document.getElementById('zone-csv-text').value) || '';
+  var monthInput = document.getElementById('zone-csv-month');
+  var range = monthRangeFromKey(monthInput && monthInput.value);
+  var rows = parseZonePointsCsv(text);
+  if (!rows.length) { if (status) { status.style.color = '#ff7b7b'; status.textContent = 'No valid rows found.'; } return; }
+  if (status) { status.style.color = 'var(--muted)'; status.textContent = 'Importing ' + rows.length + ' row(s)...'; }
+  var ok = 0, skipped = [];
+  try {
+    for (var i=0; i<rows.length; i++) {
+      var r = rows[i];
+      var pts = Math.round((Number(r.points) || 0) * 100) / 100;
+      if (pts <= 0) { skipped.push((r.name || r.phone || ('row ' + (i+1))) + ': invalid points'); continue; }
+      var member = await findMemberForPoints(r.phone, r.name);
+      if (!member) { skipped.push((r.name || r.phone || ('row ' + (i+1))) + ': member not found'); continue; }
+      var phone = _normPhone(member.phone || r.phone);
+      var zone = member.zone || 'No Zone';
+      var reason = r.reason || ('Zone points import ' + range.key);
+      var bookingId = 'ZONECSV-' + range.key + '-' + Date.now().toString(36).toUpperCase() + '-' + i;
+      await neonSQL(
+        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points, zone_name, created_at) VALUES ($1,$2,$3,'approved','zone_bonus',$4,$5,$6,$7)",
+        [bookingId, phone, member.name || r.name || phone, reason, pts, zone, range.start]
+      );
+      notifyMemberUpdate({ updateType:'points', status:'approved', phone:phone, name:member.name || '', points:pts, reason:reason });
+      ok++;
+    }
+    logAdminAction('import_zone_points_csv', ok + ' row(s) imported for ' + range.key + (skipped.length ? ', skipped ' + skipped.length : '')).catch(function(){});
+    if (status) {
+      status.style.color = skipped.length ? 'var(--yellow)' : 'var(--green)';
+      status.textContent = ok + ' imported' + (skipped.length ? '. Skipped: ' + skipped.slice(0, 3).join('; ') + (skipped.length > 3 ? '...' : '') : '.');
+    }
+    showToast('', 'CSV Import Done', ok + ' member point row(s) imported.');
+    loadZoneMonthlyReport();
+    loadWithdrawList();
+    loadLeaderboard();
+  } catch(e) {
+    console.error('[OTS] zone csv import:', e);
+    if (status) { status.style.color = '#ff7b7b'; status.textContent = 'Import failed: ' + ((e && e.message) || e); }
+  }
+}
 
 async function giveVolunteerPoints() {
   if (!requireAdminPerm('points', 'points management')) return;
@@ -9906,16 +10234,17 @@ async function giveVolunteerPoints() {
   var normP = _normPhone(phone);
   if (status) { status.style.color='var(--muted)'; status.textContent='Looking up member...'; }
   try {
-    var rows = await neonSQL('SELECT name, phone FROM members WHERE phone=$1 AND active IS NOT FALSE LIMIT 1', [normP]);
+    var rows = await neonSQL(
+      "SELECT name, phone, COALESCE(NULLIF(zone_current,''),'No Zone') AS zone FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 AND active IS NOT FALSE LIMIT 1",
+      [normP]
+    );
     if (!rows.length) { if (status) { status.style.color='#e53e3e'; status.textContent='Member not found. Check the phone number.'; } return; }
     var member = rows[0];
     if (status) { status.style.color='var(--muted)'; status.textContent='Inserting ' + pts + ' point(s) for ' + member.name + '...'; }
-    for (var i = 0; i < pts; i++) {
-      await neonSQL(
-        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason) VALUES ('VOLUNTEER',$1,$2,'approved','volunteer',$3)",
-        [normP, member.name || '', reason]
-      );
-    }
+    await neonSQL(
+      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points, zone_name) VALUES ('VOLUNTEER',$1,$2,'approved','volunteer',$3,$4,$5)",
+      [normP, member.name || '', reason, pts, member.zone || 'No Zone']
+    );
     notifyMemberUpdate({
       updateType: 'points',
       status: 'approved',
@@ -9933,120 +10262,6 @@ async function giveVolunteerPoints() {
   } catch(e) {
     if (status) { status.style.color='#e53e3e'; status.textContent='Error: ' + (e && e.message ? e.message : e); }
     console.error('[OTS] giveVolunteerPoints:', e);
-  }
-}
-
-var _pointTransferRows = [];
-
-async function loadPointTransferRequests() {
-  var el = document.getElementById('pointTransferList');
-  if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Loading share requests...</div>';
-  try {
-    _pointTransferRows = await neonSQL(
-      "SELECT id,sender_phone,sender_name,receiver_phone,receiver_name,points,reason,status,created_at,reviewed_at,reviewed_by FROM point_transfers ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 300"
-    );
-    renderPointTransferRequests();
-  } catch(e) {
-    console.error('[OTS] load point transfers:', e);
-    if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">No point share requests yet.</div>';
-  }
-}
-
-function renderPointTransferRequests() {
-  var el = document.getElementById('pointTransferList');
-  if (!el) return;
-  var rows = _pointTransferRows || [];
-  var canEdit = hasAdminPerm('points');
-  if (!rows.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">No point share requests yet.</div>';
-    return;
-  }
-  el.innerHTML = rows.map(function(r) {
-    var pending = r.status === 'pending';
-    var statusColor = r.status === 'approved' ? 'var(--green)' : (r.status === 'rejected' ? '#ff6b6b' : 'var(--yellow)');
-    var actions = pending && canEdit
-      ? '<div style="display:flex;gap:.45rem;flex-wrap:wrap;">' +
-          '<button onclick="approvePointTransfer(\'' + otsJsString(r.id) + '\')" style="background:rgba(78,203,113,.1);border:1px solid rgba(78,203,113,.35);color:var(--green);font-family:\'DM Sans\',sans-serif;font-size:.7rem;font-weight:800;padding:.35rem .7rem;border-radius:3px;cursor:pointer;">Approve</button>' +
-          '<button onclick="rejectPointTransfer(\'' + otsJsString(r.id) + '\')" style="background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.38);color:#ff7b7b;font-family:\'DM Sans\',sans-serif;font-size:.7rem;font-weight:800;padding:.35rem .7rem;border-radius:3px;cursor:pointer;">Reject</button>' +
-        '</div>'
-      : '<span style="font-size:.72rem;color:var(--muted);">' + otsEscapeHtml(r.reviewed_by || '') + '</span>';
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:.8rem .2rem;border-bottom:1px solid rgba(255,255,255,.06);gap:.8rem;flex-wrap:wrap;">' +
-      '<div style="flex:1;min-width:220px;">' +
-        '<div style="font-size:.84rem;font-weight:800;">' + otsEscapeHtml(r.sender_name || r.sender_phone || '-') + ' -> ' + otsEscapeHtml(r.receiver_name || r.receiver_phone || '-') + '</div>' +
-        '<div style="font-size:.72rem;color:var(--muted);line-height:1.5;">' + otsEscapeHtml(r.sender_phone || '') + ' to ' + otsEscapeHtml(r.receiver_phone || '') + ' - ' + otsEscapeHtml(r.reason || '') + '</div>' +
-      '</div>' +
-      '<div style="text-align:right;min-width:86px;">' +
-        '<div style="font-size:.95rem;font-weight:900;color:var(--orange);">' + (Number(r.points)||0) + ' pt</div>' +
-        '<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;color:' + statusColor + ';">' + otsEscapeHtml(r.status || 'pending') + '</div>' +
-      '</div>' +
-      actions +
-    '</div>';
-  }).join('');
-}
-
-async function approvePointTransfer(id) {
-  if (!requireAdminPerm('points', 'point sharing')) return;
-  var r = (_pointTransferRows || []).find(function(x){ return String(x.id) === String(id); });
-  if (!r || r.status !== 'pending') {
-    showToast('', 'Not Available', 'This request is no longer pending.');
-    return;
-  }
-  var points = Math.round((Number(r.points) || 0) * 100) / 100;
-  if (points <= 0) {
-    showToast('', 'Invalid Points', 'Point amount is invalid.');
-    return;
-  }
-  if (!confirm('Approve sharing ' + points + ' point(s) from ' + (r.sender_name || r.sender_phone) + ' to ' + (r.receiver_name || r.receiver_phone) + '?')) return;
-  try {
-    var available = await getMemberAvailablePoints(r.sender_phone);
-    if (points > available) {
-      showToast('', 'Not Enough Points', 'Sender currently has only ' + available + ' point(s).');
-      return;
-    }
-    var debitReason = 'Shared ' + points + ' point(s) to ' + (r.receiver_name || r.receiver_phone) + (r.reason ? ': ' + r.reason : '');
-    var creditReason = 'Received ' + points + ' point(s) from ' + (r.sender_name || r.sender_phone) + (r.reason ? ': ' + r.reason : '');
-    await neonSQL(
-      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','transfer',$4,$5)",
-      ['TRANSFER-' + id + '-OUT', r.sender_phone, r.sender_name || r.sender_phone, debitReason, -points]
-    );
-    await neonSQL(
-      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','transfer',$4,$5)",
-      ['TRANSFER-' + id + '-IN', r.receiver_phone, r.receiver_name || r.receiver_phone, creditReason, points]
-    );
-    await neonSQL(
-      "UPDATE point_transfers SET status='approved', reviewed_at=NOW(), reviewed_by=$2 WHERE id=$1",
-      [id, currentAdminUsername || 'admin']
-    );
-    notifyMemberUpdate({ updateType:'points', status:'approved', phone:r.sender_phone, name:r.sender_name || '', points:-points, reason:debitReason });
-    notifyMemberUpdate({ updateType:'points', status:'approved', phone:r.receiver_phone, name:r.receiver_name || '', points:points, reason:creditReason });
-    logAdminAction('approve_point_transfer', points + ' pt from ' + (r.sender_name || r.sender_phone) + ' to ' + (r.receiver_name || r.receiver_phone)).catch(function(){});
-    showToast('', 'Transfer Approved', 'Points moved successfully. Show count was not changed.');
-    await loadPointTransferRequests();
-    await loadWithdrawList();
-    loadLeaderboard();
-  } catch(e) {
-    console.error('[OTS] approve point transfer:', e);
-    showToast('', 'Approve Failed', 'Could not approve this point share.');
-  }
-}
-
-async function rejectPointTransfer(id) {
-  if (!requireAdminPerm('points', 'point sharing')) return;
-  var r = (_pointTransferRows || []).find(function(x){ return String(x.id) === String(id); });
-  if (!r || r.status !== 'pending') return;
-  if (!confirm('Reject this point share request?')) return;
-  try {
-    await neonSQL(
-      "UPDATE point_transfers SET status='rejected', reviewed_at=NOW(), reviewed_by=$2 WHERE id=$1",
-      [id, currentAdminUsername || 'admin']
-    );
-    notifyMemberUpdate({ updateType:'points', status:'rejected', phone:r.sender_phone, name:r.sender_name || '', points:r.points, reason:'Point share request rejected' });
-    logAdminAction('reject_point_transfer', (r.sender_name || r.sender_phone) + ' to ' + (r.receiver_name || r.receiver_phone)).catch(function(){});
-    showToast('', 'Transfer Rejected', 'Point share request rejected.');
-    await loadPointTransferRequests();
-  } catch(e) {
-    console.error('[OTS] reject point transfer:', e);
-    showToast('', 'Reject Failed', 'Could not reject this point share.');
   }
 }
 
@@ -10082,16 +10297,16 @@ function _renderWithdrawList(rows) {
   if (!rows.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">No approved points found.</div>'; return; }
   el.innerHTML = rows.map(function(r) {
     var isVol = r.claim_type === 'volunteer';
-    var isTransfer = r.claim_type === 'transfer';
+    var isZoneBonus = r.claim_type === 'zone_bonus';
     var badge = isVol
       ? '<span style="background:rgba(112,186,244,.15);border:1px solid rgba(112,186,244,.35);color:var(--blue);font-size:.65rem;font-weight:700;padding:.1rem .45rem;border-radius:3px;margin-left:.4rem;">VOLUNTEER</span>'
-      : isTransfer
-      ? '<span style="background:rgba(245,119,161,.13);border:1px solid rgba(245,119,161,.32);color:#f577a1;font-size:.65rem;font-weight:700;padding:.1rem .45rem;border-radius:3px;margin-left:.4rem;">TRANSFER</span>'
+      : isZoneBonus
+      ? '<span style="background:rgba(245,119,161,.13);border:1px solid rgba(245,119,161,.32);color:#f577a1;font-size:.65rem;font-weight:700;padding:.1rem .45rem;border-radius:3px;margin-left:.4rem;">ZONE</span>'
       : '<span style="background:rgba(var(--green-rgb),.1);border:1px solid rgba(var(--green-rgb),.3);color:var(--green);font-size:.65rem;font-weight:700;padding:.1rem .45rem;border-radius:3px;margin-left:.4rem;">SHOW</span>';
     var detail = isVol
       ? (r.reason || 'Volunteer contribution')
-      : isTransfer
-      ? (r.reason || 'Point transfer')
+      : isZoneBonus
+      ? (r.reason || 'Zone lead points')
       : ((r.venue||'-') + (r.date ? ' - ' + formatDate(r.date) : ''));
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);gap:.5rem;flex-wrap:wrap;">' +
       '<div style="flex:1;min-width:160px;">' +
@@ -10895,22 +11110,19 @@ function renderAdminTable(rows) {
              <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>` : ''}`
           : b.proofUrl
           ? `<span style="font-size:.68rem;color:var(--yellow);font-weight:600;"> Uploaded</span>
-             ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${b.id}')">Grant Point</button>
-             <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>` : ''}`
+             ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>` : ''}`
           : b.checkinAt
           ? `<div style="display:flex;flex-direction:column;gap:.15rem;">
                <span style="font-size:.68rem;color:var(--green);font-weight:800;letter-spacing:.04em;">Reached</span>
                <span style="font-size:.62rem;color:var(--muted);">${formatCheckinTime(b.checkinAt)}</span>
                ${b.checkinMapUrl ? `<a href="${otsEscapeHtml(b.checkinMapUrl)}" target="_blank" rel="noopener" style="font-size:.62rem;color:var(--blue);font-weight:700;">Open location</a>` : ''}
                ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminAllowProofUpload('${b.id}')">Allow Upload</button>
-               <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminGrantShowPoint('${b.id}')">Grant Point</button>
                <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>` : ''}
              </div>`
           : b.status === 'confirmed' && canRescueShows
           ? `<div style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-start;">
                <span style="font-size:.68rem;color:var(--muted);">No check-in</span>
                <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminAllowProofUpload('${b.id}')">Allow Upload</button>
-               <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminGrantShowPoint('${b.id}')">Grant Point</button>
                <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminGrantShowPoint('${b.id}','team')">Add Member</button>
              </div>`
           : `<span style="font-size:.68rem;color:var(--muted);">-</span>`}
@@ -11210,9 +11422,10 @@ async function createEmergencyShowCredit(data) {
     checkin_at: booking.checkinAt
   }]);
   var manualPoints = showFullPointsForBooking(booking);
+  var manualZone = await getMemberZoneName(booking.phone || '');
   await neonSQL(
-    "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','show',$4,$5)",
-    [booking.id, _normPhone(booking.phone || '') || booking.phone || '', booking.name, booking.notes, manualPoints]
+    "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points, zone_name) VALUES ($1,$2,$3,'approved','show',$4,$5,$6)",
+    [booking.id, _normPhone(booking.phone || '') || booking.phone || '', booking.name, booking.notes, manualPoints, manualZone]
   );
   allBookings.unshift(booking);
   saveLocal();
@@ -11439,11 +11652,13 @@ async function adminGrantShowPoint(id, mode) {
       [String(id), targetPhone || '']
     );
     if (existing && existing.length) {
-      await neonSQL("UPDATE claims SET status='approved', reason='Admin manual show credit' WHERE id=$1", [existing[0].id]);
+      var existingZone = await getMemberZoneName(targetPhone || '');
+      await neonSQL("UPDATE claims SET status='approved', reason='Admin manual show credit', zone_name=$2 WHERE id=$1", [existing[0].id, existingZone]);
     } else {
+      var targetZone = await getMemberZoneName(targetPhone || '');
       await neonSQL(
-        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points) VALUES ($1,$2,$3,'approved','show','Admin manual show credit',0)",
-        [String(id), targetPhone || '', targetName]
+        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points, zone_name) VALUES ($1,$2,$3,'approved','show','Admin manual show credit',0,$4)",
+        [String(id), targetPhone || '', targetName, targetZone]
       );
     }
     var balance = await rebalanceApprovedShowClaims(id, b, false);
@@ -12188,7 +12403,7 @@ var ADMIN_PERMISSION_DEFS = [
   { key:'claims',  label:'Claims',         desc:'Approve or reject performance photo claims.' },
   { key:'photos',  label:'Front photos',   desc:'Upload, reorder, rename and remove home page photos.' },
   { key:'members', label:'Members',        desc:'Add/edit members, approve zones and activate accounts.' },
-  { key:'points',  label:'Points',         desc:'Give volunteer points and withdraw approved points.' }
+  { key:'points',  label:'Points',         desc:'Manage monthly zone reports, CSV point imports, volunteer points and corrections.' }
 ];
 function parseAdminPermissions(value) {
   if (!value) return {};
@@ -12896,6 +13111,7 @@ var memberEmail      = '';
 var memberName       = '';
 var memberAvatarUrl  = '';
 var memberBio         = '';
+var memberRoleType    = '';
 var memberInstrument  = '';
 var memberInstagram   = '';
 var memberBloodGroup = '';
@@ -13012,7 +13228,7 @@ async function refreshChatPage(showDone) {
 async function loadChatMembersAndThreads() {
   var myPhone = chatMyPhone();
   var memberRows = await neonSQL(
-    "SELECT id,name,email,phone,avatar_url,zone_current,instrument,active FROM members WHERE active IS NOT FALSE ORDER BY name ASC LIMIT 1200"
+    "SELECT id,name,email,phone,avatar_url,zone_current,role_type,instrument,active FROM members WHERE active IS NOT FALSE ORDER BY name ASC LIMIT 1200"
   );
   chatMembers = (memberRows || []).map(function(m) {
     return {
@@ -13023,6 +13239,7 @@ async function loadChatMembersAndThreads() {
       phone10: _normPhone(m.phone || ''),
       avatarUrl: m.avatar_url || '',
       zone: m.zone_current || '',
+      roleType: m.role_type || '',
       instrument: m.instrument || '',
       active: m.active !== false
     };
@@ -13061,7 +13278,7 @@ function renderChatMembers() {
     return chatMemberLabel(a).localeCompare(chatMemberLabel(b));
   }).filter(function(m) {
     if (!q) return true;
-    return [m.name, m.email, m.phone, m.zone, m.instrument].join(' ').toLowerCase().indexOf(q) > -1;
+    return [m.name, m.email, m.phone, m.zone, m.instrument, memberRoleLabel(m.roleType || '', m.instrument || '')].join(' ').toLowerCase().indexOf(q) > -1;
   });
 
   if (!sorted.length) {
@@ -13071,7 +13288,8 @@ function renderChatMembers() {
   list.innerHTML = sorted.map(function(m) {
     var unread = chatUnreadCounts[m.phone10] || 0;
     var thread = chatThreadForPhone(m.phone10);
-    var last = thread && thread.last_message ? thread.last_message : (m.zone || m.instrument || 'Tap to chat');
+    var roleLabel = memberRoleLabel(m.roleType || '', m.instrument || '');
+    var last = thread && thread.last_message ? thread.last_message : (roleLabel || m.zone || 'Tap to chat');
     var active = activeChatMember && chatMemberPhone(activeChatMember) === m.phone10;
     var avatar = m.avatarUrl ? '<img src="' + otsEscapeHtml(m.avatarUrl) + '" alt="">' : otsEscapeHtml(chatInitial(m.name || m.email));
     return '<button type="button" class="chat-member-row' + (active ? ' active' : '') + '" onclick="openMemberChat(\'' + otsJsString(m.phone10) + '\')">' +
@@ -13141,7 +13359,10 @@ async function loadChatMessages(scrollBottom) {
   var block = document.getElementById('chatBlockBtn');
   var report = document.getElementById('chatReportBtn');
   if (title) title.textContent = chatMemberLabel(peer);
-  if (sub) sub.textContent = peer.zone ? ('Zone: ' + peer.zone) : (peer.instrument || peer.phone10);
+  if (sub) {
+    var peerRole = memberRoleLabel(peer.roleType || '', peer.instrument || '');
+    sub.textContent = [peerRole, peer.zone ? ('Zone: ' + peer.zone) : '', peer.phone10].filter(Boolean).join(' - ');
+  }
   if (avatar) avatar.innerHTML = peer.avatarUrl ? '<img src="' + otsEscapeHtml(peer.avatarUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover;">' : otsEscapeHtml(chatInitial(peer.name || peer.email));
   if (input) { input.disabled = false; input.placeholder = 'Message ' + chatMemberLabel(peer); }
   if (send) send.disabled = !(input && input.value.trim());
@@ -13330,6 +13551,7 @@ function restoreMemberSession() {
       // don't show as blank on every page refresh.
       memberAvatarUrl = s.avatar_url || '';
       memberBio = s.bio || '';
+      memberRoleType = s.role_type || '';
       memberInstrument = s.instrument || '';
       memberInstagram = s.instagram || '';
       memberBloodGroup = s.blood_group || '';
@@ -13395,6 +13617,7 @@ function saveMemberSession() {
     zone_current: memberZoneCurrent,
     avatar_url: memberAvatarUrl,
     bio: memberBio,
+    role_type: memberRoleType,
     instrument: memberInstrument,
     instagram: memberInstagram,
     blood_group: memberBloodGroup,
@@ -13408,27 +13631,31 @@ function saveMemberSession() {
 }
 
 // -- Photo viewer (WhatsApp-style) --------------------------------------------
-async function openPhotoViewerForMember(name, phone, shows) {
+async function openPhotoViewerForMember(name, phone, shows, roleLabel) {
   // Open immediately with initials, then fetch avatar lazily
-  openPhotoViewer(name, '', shows);
+  openPhotoViewer(name, '', shows, roleLabel || '');
   if (!phone) return;
   try {
-    var rows = await neonSQL('SELECT avatar_url FROM members WHERE phone=$1 LIMIT 1', [phone]);
+    var rows = await neonSQL("SELECT avatar_url,role_type,instrument FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 LIMIT 1", [_normPhone(phone)]);
     var url = rows && rows[0] && rows[0].avatar_url ? rows[0].avatar_url : '';
+    var liveRole = rows && rows[0] ? memberRoleLabel(rows[0].role_type || '', rows[0].instrument || '') : '';
     if (url) {
       var img = document.getElementById('pvImg');
       var ini = document.getElementById('pvInitial');
       if (img) { img.src = url; img.style.display = ''; }
       if (ini) ini.style.display = 'none';
     }
+    var roleEl = document.getElementById('pvRole');
+    if (roleEl && liveRole) roleEl.textContent = liveRole;
   } catch(e) {} // silent - viewer already shows initials as fallback
 }
 
-function openPhotoViewer(name, avatarUrl, shows) {
+function openPhotoViewer(name, avatarUrl, shows, roleLabel) {
   var ov = document.getElementById('photoViewerOverlay');
   var img = document.getElementById('pvImg');
   var ini = document.getElementById('pvInitial');
   var nm  = document.getElementById('pvName');
+  var role = document.getElementById('pvRole');
   var sh  = document.getElementById('pvShows');
   if (!ov) return;
   if (avatarUrl) {
@@ -13439,6 +13666,7 @@ function openPhotoViewer(name, avatarUrl, shows) {
     ini.style.display = '';
   }
   nm.textContent  = name || '';
+  if (role) role.textContent = roleLabel || '';
   sh.textContent  = shows != null ? shows + ' show' + (shows !== 1 ? 's' : '') + ' performed' : '';
   ov.style.display = 'flex';
   requestAnimationFrame(function(){ ov.classList.add('pv-open'); });
@@ -13474,18 +13702,20 @@ function _applyMyProfileHeader(avatarUrl) {
 
 // == Profile Settings ==
 function _profileCompletionFields() {
-  return [
+  var fields = [
     (memberName || '').trim(),
     (memberEmail || '').trim(),
     (memberAddress || '').trim(),
     (memberZoneCurrent || '').trim(),
     (memberBio || '').trim(),
-    (memberInstrument || '').trim(),
+    (memberRoleType || '').trim(),
     (memberBloodGroup || '').trim(),
     (memberDob || '').trim(),
     (memberAvatarUrl || '').trim(),
     (memberIdProofUrl || '').trim()
   ];
+  if (roleNeedsInstrument(memberRoleType)) fields.push((memberInstrument || '').trim());
+  return fields;
 }
 
 function calcProfileCompletion() {
@@ -13568,6 +13798,21 @@ function _updateBioCount() {
   if (bioEl && cntEl) cntEl.textContent = bioEl.value.length;
 }
 
+function updateProfileRoleFields() {
+  var roleEl = document.getElementById('pf-role');
+  var wrap = document.getElementById('pf-instrument-wrap');
+  var instEl = document.getElementById('pf-instrument');
+  var role = roleEl ? roleEl.value : '';
+  var showInstrument = roleNeedsInstrument(role) || (!role && instEl && instEl.value);
+  if (wrap) wrap.style.display = showInstrument ? '' : 'none';
+  if (instEl) {
+    instEl.placeholder = role === 'singer_instrumentalist'
+      ? 'Which instrument do you play?'
+      : 'e.g. Acoustic Guitar, Keyboard, Cajon...';
+    if (!showInstrument && (role === 'singer' || role === 'volunteer')) instEl.value = '';
+  }
+}
+
 async function showProfilePage() {
   if (!memberLoggedIn || !memberPhone) return;
   var normP = _normPhone(memberPhone);
@@ -13576,6 +13821,7 @@ async function showProfilePage() {
   var emailEl = document.getElementById('pf-email');
   var phoneEl = document.getElementById('pf-phone');
   var bioEl   = document.getElementById('pf-bio');
+  var roleEl  = document.getElementById('pf-role');
   var instrEl = document.getElementById('pf-instrument');
   var igEl    = document.getElementById('pf-instagram');
   var bgEl    = document.getElementById('pf-blood-group');
@@ -13589,7 +13835,9 @@ async function showProfilePage() {
   if (emailEl) emailEl.value = memberEmail      || '';
   if (phoneEl) phoneEl.value = memberPhone      || '';
   if (bioEl)   { bioEl.value = memberBio        || ''; _updateBioCount(); }
+  if (roleEl)  roleEl.value  = memberRoleType   || '';
   if (instrEl) instrEl.value = memberInstrument || '';
+  updateProfileRoleFields();
   if (igEl)    igEl.value    = memberInstagram  || '';
   if (bgEl)    bgEl.value    = memberBloodGroup || '';
   if (dobEl)   dobEl.value   = _normalizeBirthDayMonth(memberDob) || '';
@@ -13608,7 +13856,7 @@ async function showProfilePage() {
   // Fetch fresh row from DB
   try {
     var rows = await neonSQL(
-      'SELECT name,email,bio,instrument,instagram,avatar_url,blood_group,date_of_birth,address,zone_current,zone_request,zone_request_reason,zone_request_status,id_proof_url FROM members WHERE RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10)=$1 LIMIT 1',
+      'SELECT name,email,bio,role_type,instrument,instagram,avatar_url,blood_group,date_of_birth,address,zone_current,zone_request,zone_request_reason,zone_request_status,id_proof_url FROM members WHERE RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10)=$1 LIMIT 1',
       [normP]
     );
     if (rows && rows[0]) {
@@ -13616,6 +13864,7 @@ async function showProfilePage() {
       if (r.name)       memberName       = r.name;
       if (r.email)      memberEmail      = r.email;
       memberBio        = r.bio          || '';
+      memberRoleType   = r.role_type    || '';
       memberInstrument = r.instrument   || '';
       memberInstagram  = r.instagram    || '';
       memberBloodGroup = r.blood_group  || '';
@@ -13631,7 +13880,9 @@ async function showProfilePage() {
       if (nameEl)  nameEl.value  = memberName       || '';
       if (emailEl) emailEl.value = memberEmail      || '';
       if (bioEl)   { bioEl.value = memberBio        || ''; _updateBioCount(); }
+      if (roleEl)  roleEl.value  = memberRoleType   || '';
       if (instrEl) instrEl.value = memberInstrument || '';
+      updateProfileRoleFields();
       if (igEl)    igEl.value    = memberInstagram  || '';
       if (bgEl)    bgEl.value    = memberBloodGroup || '';
       if (dobEl)   dobEl.value   = _normalizeBirthDayMonth(memberDob) || '';
@@ -13730,6 +13981,7 @@ async function saveProfile() {
   var nameVal  = ((document.getElementById('pf-name')       || {}).value || '').trim();
   var emailVal = ((document.getElementById('pf-email')      || {}).value || '').trim();
   var bioVal   = ((document.getElementById('pf-bio')        || {}).value || '').trim();
+  var roleVal  = ((document.getElementById('pf-role')       || {}).value || '').trim();
   var instrVal = ((document.getElementById('pf-instrument') || {}).value || '').trim();
   var igVal    = ((document.getElementById('pf-instagram')  || {}).value || '').trim();
   var bgVal    = ((document.getElementById('pf-blood-group')|| {}).value || '').trim();
@@ -13747,6 +13999,11 @@ async function saveProfile() {
     if (statusEl) { statusEl.textContent = ' Enter birth date as DD-MM.'; statusEl.style.color = 'var(--orange)'; }
     return;
   }
+  if (roleNeedsInstrument(roleVal) && !instrVal) {
+    if (statusEl) { statusEl.textContent = ' Please enter your instrument.'; statusEl.style.color = 'var(--orange)'; }
+    return;
+  }
+  if (roleVal === 'singer' || roleVal === 'volunteer') instrVal = '';
   if (memberZoneCurrent && zoneVal && zoneVal !== memberZoneCurrent && !zoneReasonVal) {
     if (statusEl) { statusEl.textContent = ' Please add a reason for changing zone.'; statusEl.style.color = 'var(--orange)'; }
     return;
@@ -13784,13 +14041,14 @@ async function saveProfile() {
     }
 
     await neonSQL(
-      'UPDATE members SET name=$1, email=$2, bio=$3, instrument=$4, instagram=$5, blood_group=$6, date_of_birth=$7, address=$8, zone_current=$9, zone_request=$10, zone_request_reason=$11, zone_request_status=$12 WHERE RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10)=$13',
-      [nameVal, emailVal || null, bioVal || null, instrVal || null, igVal || null, bgVal || null, dobVal || null, addrVal || null, nextZoneCurrent || null, nextZoneRequest || null, nextZoneReason || null, nextZoneStatus || null, normP]
+      'UPDATE members SET name=$1, email=$2, bio=$3, role_type=$4, instrument=$5, instagram=$6, blood_group=$7, date_of_birth=$8, address=$9, zone_current=$10, zone_request=$11, zone_request_reason=$12, zone_request_status=$13 WHERE RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10)=$14',
+      [nameVal, emailVal || null, bioVal || null, roleVal || null, instrVal || null, igVal || null, bgVal || null, dobVal || null, addrVal || null, nextZoneCurrent || null, nextZoneRequest || null, nextZoneReason || null, nextZoneStatus || null, normP]
     );
 
     memberName       = nameVal;
     if (emailVal) memberEmail = emailVal;
     memberBio        = bioVal;
+    memberRoleType   = roleVal;
     memberInstrument = instrVal;
     memberInstagram  = igVal;
     memberBloodGroup = bgVal;
@@ -13837,11 +14095,12 @@ async function saveProfile() {
 function _fetchAndApplyMemberAvatar() {
   if (!memberLoggedIn || !memberPhone) return;
   var normP = _normPhone(memberPhone);
-  neonSQL("SELECT avatar_url,bio,instrument,instagram,blood_group,date_of_birth,address,zone_current,zone_request,zone_request_reason,zone_request_status,id_proof_url FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 LIMIT 1", [normP]).then(function(rows) {
+  neonSQL("SELECT avatar_url,bio,role_type,instrument,instagram,blood_group,date_of_birth,address,zone_current,zone_request,zone_request_reason,zone_request_status,id_proof_url FROM members WHERE RIGHT(REGEXP_REPLACE(phone,'[^0-9]','','g'),10)=$1 LIMIT 1", [normP]).then(function(rows) {
     if (!rows || !rows[0]) return;
     var r = rows[0];
     var url = r.avatar_url || '';
     memberBio        = r.bio           || '';
+    memberRoleType   = r.role_type     || '';
     memberInstrument = r.instrument    || '';
     memberInstagram  = r.instagram     || '';
     memberBloodGroup = r.blood_group   || '';
@@ -14067,11 +14326,6 @@ function _nativeTapRoute(payload, attempt) {
       return false;
     }
     showPage('admin');
-    if (String(payload.eventType || payload.event_type || '') === 'point_transfer') {
-      switchAdminTab('points');
-      _nativeTapClear();
-      return true;
-    }
     currentFilter = 'all';
     var search = document.getElementById('adminSearch'); if (search) search.value = '';
     switchAdminTab('bookings');
@@ -14284,25 +14538,6 @@ function notifyAdminZoneApproval(member) {
   });
 }
 
-function notifyAdminPointTransfer(req) {
-  if (!req || !pushBackendEnabled()) return;
-  pushApi('/push/admin-queue', {
-    eventType: 'point_transfer',
-    type: 'point_transfer',
-    bookingId: req.id || '',
-    name: req.name || '',
-    phone: req.phone || '',
-    receiverName: req.receiverName || '',
-    receiverPhone: req.receiverPhone || '',
-    points: req.points || '',
-    reason: req.reason || '',
-    venue: 'Point share request',
-    date: ''
-  }).catch(function(e){
-    console.warn('[OTS] admin point transfer push failed:', e && (e.message || e));
-  });
-}
-
 function initGoogleSignIn() {
   var wrap = document.getElementById('googleSignInWrap');
   var note = document.getElementById('googleSignInNote');
@@ -14358,6 +14593,7 @@ function completeBackendMemberLogin(member, token, method) {
   try { memberAddress = allowed.address || memberAddress || ''; } catch(e) {}
   memberAvatarUrl       = allowed.avatar_url           || '';
   memberBio             = allowed.bio                  || '';
+  memberRoleType        = allowed.role_type            || '';
   memberInstrument      = allowed.instrument           || '';
   memberInstagram       = allowed.instagram            || '';
   memberBloodGroup      = allowed.blood_group          || '';
@@ -14851,6 +15087,7 @@ async function loadMembers() {
       phone:   m.phone || '',
       address: m.address || '',
       bio: m.bio || '',
+      roleType: m.role_type || '',
       instrument: m.instrument || '',
       instagram: m.instagram || '',
       bloodGroup: m.blood_group || '',
@@ -14973,6 +15210,7 @@ function renderMembersTable() {
       return String(m.name || '').toLowerCase().includes(q) ||
              String(m.email || '').toLowerCase().includes(q) ||
              String(m.phone || '').toLowerCase().includes(q) ||
+             memberRoleLabel(m.roleType || '', m.instrument || '').toLowerCase().includes(q) ||
              String(m.zoneCurrent || '').toLowerCase().includes(q);
     });
   }
@@ -14990,11 +15228,13 @@ function renderMembersTable() {
     var memberId = otsJsString(m.id);
     var memberNameHtml = m.name ? otsEscapeHtml(m.name) : '<span style="color:var(--muted);font-style:italic;">-</span>';
     var pendingHtml = pending ? ' <span style="color:var(--yellow);">- Pending ' + otsEscapeHtml(m.zoneRequest) + '</span>' : '';
+    var roleText = memberRoleLabel(m.roleType || '', m.instrument || '');
     return `
     <div class="members-tbl-row">
       <div style="color:var(--muted);font-size:.8rem;">${baseIndex + i + 1}</div>
       <div style="font-size:.88rem;font-weight:500;">
         ${memberNameHtml}
+        ${roleText ? `<div style="font-size:.68rem;color:var(--blue);font-weight:700;margin-top:.2rem;">${otsEscapeHtml(roleText)}</div>` : ''}
         <div style="font-size:.68rem;color:var(--muted);margin-top:.2rem;">Zone: ${otsEscapeHtml(zoneText)}${pendingHtml}</div>
       </div>
       <div style="font-size:.78rem;color:#70BAF4;word-break:break-all;">${m.email ? otsEscapeHtml(m.email) : '<span style="color:rgba(244,240,255,.3);font-style:italic;">-</span>'}</div>
@@ -15180,8 +15420,8 @@ async function deleteMember(id) {
 
 function exportMembersCSV() {
   if (!members.length) { showToast('\u26a0\ufe0f', 'No members', 'Nothing to export yet.'); return; }
-  const hdr  = ['Name', 'Email', 'Phone', 'Address', 'Zone', 'Pending Zone', 'Active', 'Added'];
-  const rows = members.map(m => [m.name || '', m.email || '', m.phone || '', m.address || '', m.zoneCurrent || '', m.zoneRequest || '', m.active ? 'Yes' : 'No', m.addedAt ? m.addedAt.slice(0,10) : '']);
+  const hdr  = ['Name', 'Email', 'Phone', 'Role', 'Instrument', 'Address', 'Zone', 'Pending Zone', 'Active', 'Added'];
+  const rows = members.map(m => [m.name || '', m.email || '', m.phone || '', memberRoleLabel(m.roleType || '', m.instrument || ''), m.instrument || '', m.address || '', m.zoneCurrent || '', m.zoneRequest || '', m.active ? 'Yes' : 'No', m.addedAt ? m.addedAt.slice(0,10) : '']);
   const csv  = [hdr, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const a    = Object.assign(document.createElement('a'), {
     href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
