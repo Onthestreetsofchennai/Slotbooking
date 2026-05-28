@@ -543,6 +543,8 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 .modal-overlay.show{opacity:1;pointer-events:all;}
 .modal{background:#12101f;border:1px solid var(--border);border-radius:6px;padding:2.5rem;max-width:500px;width:92%;text-align:left;transform:translateY(24px) scale(.96);transition:transform .3s;position:relative;overflow:hidden;}
 .modal-scroll{max-height:min(88vh,720px);overflow-y:auto;overscroll-behavior:contain;padding-bottom:1.25rem;}
+body.modal-lock{overflow:hidden;touch-action:none;}
+.modal-overlay.show .modal{touch-action:auto;}
 .modal::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad);}
 .modal-overlay.show .modal{transform:translateY(0) scale(1);}
 .modal-title{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;margin-bottom:.4rem;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
@@ -732,7 +734,7 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 
 html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!important;}
 #venueModal.show{z-index:400000!important;pointer-events:auto!important;}
-#venueModal .modal{display:flex;flex-direction:column;}
+#venueModal .modal{display:flex;flex-direction:column;padding-top:3.1rem;}
 #venueModal .modal-actions button{min-height:54px;position:relative;z-index:5;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 
 /* CONFIRM MODAL */
@@ -5829,8 +5831,8 @@ textarea{
     </div>
     <div id="ca-err" class="login-error" style="display:none;margin-bottom:.5rem;"></div>
     <div class="admin-access-actions">
-      <button class="btn-secondary" onclick="closeCreateAdminModal()" style="flex:1;">Cancel</button>
-      <button class="btn-add-venue" onclick="submitCreateAdmin()" style="flex:2;">Create Admin</button>
+      <button type="button" class="btn-secondary" onclick="closeCreateAdminModal()" style="flex:1;">Cancel</button>
+      <button type="button" class="btn-add-venue" id="ca-submit-btn" ontouchend="event.preventDefault();submitCreateAdmin();" onclick="submitCreateAdmin()" style="flex:2;">Create Admin</button>
     </div>
   </div>
 </div>
@@ -5849,8 +5851,8 @@ textarea{
     </div>
     <div id="aa-err" class="login-error" style="display:none;margin-bottom:.5rem;"></div>
     <div class="admin-access-actions">
-      <button class="btn-secondary" onclick="closeAdminAccessModal()" style="flex:1;">Cancel</button>
-      <button class="btn-add-venue" onclick="saveAdminAccess()" style="flex:2;">Save Access</button>
+      <button type="button" class="btn-secondary" onclick="closeAdminAccessModal()" style="flex:1;">Cancel</button>
+      <button type="button" class="btn-add-venue" id="aa-save-btn" ontouchend="event.preventDefault();saveAdminAccess();" onclick="saveAdminAccess()" style="flex:2;">Save Access</button>
     </div>
   </div>
 </div>
@@ -5865,6 +5867,7 @@ textarea{
 <!-- VENUE EDIT MODAL -->
 <div class="modal-overlay" id="venueModal">
   <div class="modal modal-scroll">
+    <button class="admin-modal-close" type="button" onclick="closeVenueModal()" aria-label="Close venue editor">&times;</button>
     <div class="modal-title" id="vm-title">Add Venue</div>
     <div class="modal-sub" id="vm-sub">Fill in the details. Changes will reflect immediately on the booking page.</div>
     <input type="hidden" id="vm-id">
@@ -6062,6 +6065,7 @@ let memberPage       = 1;
 let memberPageSize   = 50;
 let editingVenueId   = null;
 let csvParsedRows    = [];
+let _venueSaving      = false;
 
 
 // =======================================
@@ -11225,22 +11229,27 @@ function openVenueModal(id) {
   var err = document.getElementById('vm-err');
   if (err) { err.textContent = ''; err.style.display = 'none'; }
   try { document.documentElement.classList.add('venue-modal-open'); } catch(e) {}
+  try { document.body.classList.add('modal-lock'); } catch(e) {}
   document.getElementById('venueModal').classList.add('show');
   var mbn = document.getElementById('mobile-nav');
   if (mbn) mbn.style.display = 'none';
 }
 function closeVenueModal() {
+  if (_venueSaving) return;
   document.getElementById('venueModal').classList.remove('show');
   try { document.documentElement.classList.remove('venue-modal-open'); } catch(e) {}
+  try { document.body.classList.remove('modal-lock'); } catch(e) {}
   var mbn = document.getElementById('mobile-nav');
   if (mbn) mbn.style.display = '';
 }
 async function saveVenue() {
   if (!requireAdminPerm('venues', 'venue editing')) return;
+  if (_venueSaving) return;
   var saveBtn = document.getElementById('vm-save-btn');
   var errBox = document.getElementById('vm-err');
   if (errBox) { errBox.textContent = ''; errBox.style.display = 'none'; }
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+  _venueSaving = true;
   try {
     var getVal = function(id) {
       var el = document.getElementById(id);
@@ -11302,6 +11311,7 @@ async function saveVenue() {
       if (typeof logAdminAction === 'function') logAdminAction('add_venue', name + ' (' + date + ')').catch(function(){});
       showToast('','Venue Added',`"${name}" is now live on the booking page.`);
     }
+    _venueSaving = false;
     closeVenueModal();
     syncCalendarToVenueDates(true);
     renderCalendar(); renderVenueManager(); renderVenueList(); updateHeroStats(); updateAdminStats();
@@ -11315,6 +11325,7 @@ async function saveVenue() {
     }
     showToast('', 'Save Failed', (e && e.message) ? e.message : 'Could not save venue. Please try again.');
   } finally {
+    _venueSaving = false;
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Venue'; }
   }
 }
@@ -12263,9 +12274,9 @@ function showConfirmModalFn(b) {
 }
 function closeConfirmModal(){document.getElementById('confirmModal').classList.remove('show');}
 document.getElementById('confirmModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeConfirmModal();});
-document.getElementById('venueModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeVenueModal();});
-document.getElementById('createAdminModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCreateAdminModal();});
-document.getElementById('adminAccessModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAdminAccessModal();});
+document.getElementById('venueModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) e.preventDefault(); });
+document.getElementById('createAdminModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) e.preventDefault(); });
+document.getElementById('adminAccessModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) e.preventDefault(); });
 // Member login page: never dismiss on outside click (it IS the page)
 // document.getElementById('memberLoginPage') dismiss intentionally removed
 
@@ -12928,6 +12939,8 @@ let _logoClicks = 0, _logoTimer = null;
 var _adminDataLoading = false;
 var _adminRefreshSeq = 0;
 var _adminRetryTimer = null;
+var _createAdminSaving = false;
+var _adminAccessSaving = false;
 
 var ADMIN_PERMISSION_DEFS = [
   { key:'slots',   label:'Slot approvals', desc:'Approve, reject and cancel slot bookings.' },
@@ -13484,6 +13497,7 @@ async function submitClearAllVenues() {
 
 function openCreateAdminModal() {
   if (currentAdminRole !== 'superadmin') return;
+  _createAdminSaving = false;
   document.getElementById('ca-username').value = '';
   document.getElementById('ca-password').value = '';
   document.getElementById('ca-role').value = 'admin';
@@ -13491,12 +13505,17 @@ function openCreateAdminModal() {
   if (list) list.innerHTML = renderPermissionChecks('ca-perm-', { slots:true });
   syncCreateAdminPermissionUi();
   document.getElementById('ca-err').style.display = 'none';
+  var btn = document.getElementById('ca-submit-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Create Admin'; }
+  try { document.body.classList.add('modal-lock'); } catch(e) {}
   document.getElementById('createAdminModal').classList.add('show');
   setTimeout(function(){ document.getElementById('ca-username').focus(); }, 100);
 }
 function closeCreateAdminModal() {
+  if (_createAdminSaving) return;
   var modal = document.getElementById('createAdminModal');
   if (modal) modal.classList.remove('show');
+  try { document.body.classList.remove('modal-lock'); } catch(e) {}
 }
 function syncCreateAdminPermissionUi() {
   var role = document.getElementById('ca-role') ? document.getElementById('ca-role').value : 'admin';
@@ -13505,30 +13524,40 @@ function syncCreateAdminPermissionUi() {
 }
 async function submitCreateAdmin() {
   if (currentAdminRole !== 'superadmin') return;
+  if (_createAdminSaving) return;
   var u = document.getElementById('ca-username').value.trim();
   var p = document.getElementById('ca-password').value;
   var r = document.getElementById('ca-role').value;
   var perms = r === 'superadmin' ? {} : getCheckedAdminPermissions('ca-perm-');
   var err = document.getElementById('ca-err');
+  var btn = document.getElementById('ca-submit-btn');
   err.style.display = 'none';
   if (!u) { err.textContent = 'Username is required.'; err.style.display = ''; return; }
   if (p.length < 4) { err.textContent = 'Password must be at least 4 characters.'; err.style.display = ''; return; }
+  _createAdminSaving = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
   try {
+    await neonSQL("ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT '{}'");
     await neonSQL(
       "INSERT INTO admins (username, password, role, permissions) VALUES ($1,$2,$3,$4)",
       [u, p, r, JSON.stringify(perms)]
     );
     logAdminAction('create_admin', u + ' ('+r+')').catch(function(){});
+    _createAdminSaving = false;
     closeCreateAdminModal();
     showToast('', 'Admin Created', u + ' can now log in.');
     loadSuperAdminData();
   } catch(e) {
     err.textContent = (e&&e.message&&e.message.includes('unique')) ? 'Username already exists.' : 'Error: ' + (e&&e.message);
     err.style.display = '';
+  } finally {
+    _createAdminSaving = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Admin'; }
   }
 }
 function openAdminAccessModal(id, username) {
   if (currentAdminRole !== 'superadmin') return;
+  _adminAccessSaving = false;
   var admin = _saAdmins.find(function(a){ return Number(a.id) === Number(id); });
   if (!admin || admin.role === 'superadmin') return;
   document.getElementById('aa-id').value = id;
@@ -13539,27 +13568,49 @@ function openAdminAccessModal(id, username) {
   if (list) list.innerHTML = renderPermissionChecks('aa-perm-', parseAdminPermissions(admin.permissions));
   var err = document.getElementById('aa-err');
   if (err) err.style.display = 'none';
+  var btn = document.getElementById('aa-save-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Save Access'; }
+  try { document.body.classList.add('modal-lock'); } catch(e) {}
   document.getElementById('adminAccessModal').classList.add('show');
 }
 function closeAdminAccessModal() {
+  if (_adminAccessSaving) return;
   var modal = document.getElementById('adminAccessModal');
   if (modal) modal.classList.remove('show');
+  try { document.body.classList.remove('modal-lock'); } catch(e) {}
 }
 async function saveAdminAccess() {
   if (currentAdminRole !== 'superadmin') return;
+  if (_adminAccessSaving) return;
   var id = document.getElementById('aa-id').value;
   var username = document.getElementById('aa-username').value || 'admin';
   var err = document.getElementById('aa-err');
+  var btn = document.getElementById('aa-save-btn');
   var perms = getCheckedAdminPermissions('aa-perm-');
   if (err) err.style.display = 'none';
+  if (!id) {
+    if (err) { err.textContent = 'Admin account was not selected. Close and open Access again.'; err.style.display = ''; }
+    return;
+  }
+  _adminAccessSaving = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
   try {
+    await neonSQL("ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT '{}'");
     await neonSQL("UPDATE admins SET permissions=$1 WHERE id=$2 AND role <> 'superadmin'", [JSON.stringify(perms), id]);
+    _saAdmins = (_saAdmins || []).map(function(a) {
+      if (Number(a.id) === Number(id)) return Object.assign({}, a, { permissions: JSON.stringify(perms) });
+      return a;
+    });
     logAdminAction('update_admin_access', username + ' - ' + adminPermissionSummary(perms, 'admin')).catch(function(){});
+    _adminAccessSaving = false;
     closeAdminAccessModal();
     showToast('', 'Access Updated', username + ' permissions saved.');
     loadSuperAdminData();
   } catch(e) {
     if (err) { err.textContent = 'Could not save access: ' + (e && e.message ? e.message : e); err.style.display = ''; }
+  } finally {
+    _adminAccessSaving = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Access'; }
   }
 }
 async function toggleAdminActive(id, active, username) {

@@ -1,0 +1,28 @@
+{
+  "name": "ON THE STREETS Booking",
+  "short_name": "OTS Booking",
+  "description": "Book and manage On The Streets performance slots.",
+  "id": "/Slotbooking/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0d0b1a",
+  "theme_color": "#f0771e",
+  "categories": ["entertainment", "productivity"],
+  "icons": [
+    {
+      "src": "./assets/ots-brand-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/ots-login-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
