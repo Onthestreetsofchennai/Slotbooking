@@ -5013,7 +5013,7 @@ textarea{
       <div class="member-stats-bar">
         <div class="ms-stat"><div class="ms-stat-num" id="ms-shows">-</div><div class="ms-stat-label">Shows Done</div></div>
         <div class="ms-stat"><div class="ms-stat-num" id="ms-points">-</div><div class="ms-stat-label">Points</div></div>
-        <div class="ms-stat"><div class="ms-stat-num" id="ms-rank">#-</div><div class="ms-stat-label">My Rank</div></div>
+        <div class="ms-stat"><div class="ms-stat-num" id="ms-rank">#-</div><div class="ms-stat-label">Monthly Rank</div></div>
       </div>
       <div id="myPerfList" class="my-perf-table" style="display:none;"></div>
     </div>
@@ -5096,7 +5096,7 @@ textarea{
       <button class="btn-back-home" onclick="history.length > 1 ? history.back() : showPage('home')" style="white-space:nowrap;">Back</button>
       <div class="lb-title-block">
         <div class="lb-eyebrow"> OTS Hall of Fame</div>
-        <h2 class="lb-title">Performer <span class="hl">Leaderboard</span></h2>
+        <h2 class="lb-title">Monthly <span class="hl">Leaderboard</span></h2>
       </div>
       <button class="lb-refresh" onclick="loadLeaderboard()" style="white-space:nowrap;">Refresh</button>
     </div>
@@ -5920,6 +5920,19 @@ textarea{
        Choose Photo
     </button>
 
+    <div id="proofManualTimeBox" style="display:none;margin-top:1rem;padding:1rem;border:1px solid rgba(245,200,66,.28);background:rgba(245,200,66,.06);border-radius:6px;">
+      <div style="font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#ffc83c;margin-bottom:.45rem;">Missed check-in?</div>
+      <p style="font-size:.72rem;color:var(--muted);line-height:1.45;margin-bottom:.75rem;">Enter your arrival time and actual show started time before submitting the photo.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;">
+        <label style="font-size:.68rem;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;">Arrival time
+          <input id="proofArrivalTime" type="time" style="margin-top:.3rem;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:.55rem;color:#fff;font-family:'DM Sans',sans-serif;">
+        </label>
+        <label style="font-size:.68rem;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;">Show started
+          <input id="proofShowStartTime" type="time" style="margin-top:.3rem;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:.55rem;color:#fff;font-family:'DM Sans',sans-serif;">
+        </label>
+      </div>
+    </div>
+
     <!-- Band member sharing -->
     <div style="margin-top:1.1rem;padding-top:1rem;border-top:1px solid var(--border);">
       <div style="font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem;"> Who else performed? (optional)</div>
@@ -5931,7 +5944,7 @@ textarea{
       <div id="proofSharedList" style="display:flex;flex-direction:column;gap:.35rem;"></div>
     </div>
 
-    <button type="button" class="proof-submit-btn" id="proofSubmitBtn" onclick="proofSubmitTap(event)" disabled style="margin-top:1rem;">Submit for Approval</button>
+    <button type="button" class="proof-submit-btn" id="proofSubmitBtn" ontouchend="proofSubmitTap(event)" onclick="proofSubmitTap(event)" disabled style="margin-top:1rem;">Submit for Approval</button>
     <div id="proofErr" style="color:#ff4b4b;font-size:.75rem;margin-top:.6rem;display:none;"></div>
   </div>
 </div>
@@ -8124,9 +8137,11 @@ function _buildZoneBattle(rows) {
 async function loadLeaderboard() {
   const el = document.getElementById('leaderboardContent');
   if (!el) return;
+  var monthRange = monthRangeFromKey(monthKeyFromDate());
+  var cacheKey = 'ots_leaderboard_cache_' + monthRange.key;
 
   try {
-    var cached = JSON.parse(localStorage.getItem('ots_leaderboard_cache') || '[]');
+    var cached = JSON.parse(localStorage.getItem(cacheKey) || '[]');
     if (Array.isArray(cached) && cached.length) {
       _lbAllRows = cached;
       renderLeaderboard(cached);
@@ -8140,9 +8155,14 @@ async function loadLeaderboard() {
   try {
     if (!members.length) { try { await loadMembers(); } catch(_){} }
     const rows = await neonSQL(
-      "SELECT c.member_name AS name, c.member_phone AS phone, SUM(COALESCE(c.points,1)) AS shows, COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show')='show') AS show_count FROM claims c WHERE c.status='approved' AND c.member_name IS NOT NULL AND c.member_name <> '' GROUP BY c.member_name, c.member_phone ORDER BY shows DESC LIMIT 2000"
+      "SELECT COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key) AS name, " +
+      "MAX(c.member_phone) AS phone, c.phone_key, SUM(COALESCE(c.points,1)) AS shows, " +
+      "COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show')='show') AS show_count " +
+      "FROM (SELECT RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10) AS phone_key, member_name, member_phone, points, claim_type FROM claims WHERE status='approved' AND created_at >= $1 AND created_at < $2) c " +
+      "WHERE c.phone_key <> '' GROUP BY c.phone_key " +
+      "ORDER BY shows DESC, show_count DESC, LOWER(COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key)) ASC, c.phone_key ASC LIMIT 2000",
+      [monthRange.start, monthRange.end]
     );
-    var monthRange = monthRangeFromKey(monthKeyFromDate());
     var zoneRows = await neonSQL(
       "SELECT COALESCE(NULLIF(c.zone_name,''),NULLIF(m.zone_current,''),'No Zone') AS zone_name, SUM(COALESCE(c.points,1)) AS total_points, COUNT(DISTINCT c.member_phone) AS member_count " +
       "FROM claims c LEFT JOIN members m ON RIGHT(REGEXP_REPLACE(c.member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE(m.phone,'[^0-9]','','g'),10) " +
@@ -8154,13 +8174,18 @@ async function loadLeaderboard() {
       var prof = _memberProfileForRow(r);
       return Object.assign({}, r, { zone: prof.zoneCurrent || '', roleType: prof.roleType || '', instrument: prof.instrument || '' });
     });
-    try { localStorage.setItem('ots_leaderboard_cache', JSON.stringify(_lbAllRows)); } catch(_){}
+    try { localStorage.setItem(cacheKey, JSON.stringify(_lbAllRows)); } catch(_){}
     renderLeaderboard(_lbAllRows);
     if (memberLoggedIn && memberPhone) checkShowMilestone();
   } catch(e) {
     _lbZoneRows = [];
     const map = {};
-    allBookings.filter(function(b){ return b.proofClaimed && b.name; }).forEach(function(b){
+    var fallbackStartKey = monthRange.key + '-01';
+    var fallbackEndKey = monthKeyFromDate(new Date(new Date(monthRange.start).getFullYear(), new Date(monthRange.start).getMonth() + 1, 1)) + '-01';
+    allBookings.filter(function(b){
+      var key = bookingDateKey(b);
+      return b.proofClaimed && b.name && key >= fallbackStartKey && key < fallbackEndKey;
+    }).forEach(function(b){
       const key = (_normPhone(b.phone)||b.name.toLowerCase());
       if (!map[key]) map[key] = { name: b.name, phone: b.phone||'', shows: 0, show_count:0 };
       map[key].shows++;
@@ -8169,7 +8194,7 @@ async function loadLeaderboard() {
     _lbAllRows = Object.values(map).map(function(r){
       r.zone = _memberZoneForRow(r);
       return r;
-    }).sort(function(a,b){ return b.shows - a.shows; });
+    }).sort(function(a,b){ return (b.shows - a.shows) || (b.show_count - a.show_count) || String(a.name||'').localeCompare(String(b.name||'')); });
     renderLeaderboard(_lbAllRows);
   }
 }
@@ -8385,7 +8410,7 @@ async function loadMemberStats() {
     var claims = await neonSQL(
       "SELECT c.id, COALESCE(b.venue, c.reason, '-') AS venue, COALESCE(b.date,'') AS date, COALESCE(c.claim_type,'show') AS claim_type, c.reason, COALESCE(c.points,1) AS points " +
       "FROM claims c LEFT JOIN bookings b ON b.id=c.booking_id " +
-      "WHERE c.member_phone=$1 AND c.status='approved' ORDER BY c.created_at DESC",
+      "WHERE RIGHT(REGEXP_REPLACE(c.member_phone,'[^0-9]','','g'),10)=$1 AND c.status='approved' ORDER BY c.created_at DESC",
       [normP]
     );
     var showClaims  = claims.filter(function(c){ return (c.claim_type||'show')==='show'; });
@@ -8395,13 +8420,18 @@ async function loadMemberStats() {
     total = Math.round(total * 100) / 100;
     if (msShows)  msShows.textContent  = count;
     if (msPoints) msPoints.textContent = total;
-    // Rank: count how many people have MORE approved claims
-    var rankRes = await neonSQL(
-      "SELECT COUNT(*) AS above FROM (SELECT member_phone, SUM(COALESCE(points,1)) AS n FROM claims WHERE status='approved' GROUP BY member_phone HAVING SUM(COALESCE(points,1)) > $1) sub",
-      [total]
+    // Monthly rank uses the exact same phone-deduped ordering as the public rankings list.
+    var rankMonthRange = monthRangeFromKey(monthKeyFromDate());
+    var rankRows = await neonSQL(
+      "SELECT c.phone_key, COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key) AS name, " +
+      "SUM(COALESCE(c.points,1)) AS shows, COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show')='show') AS show_count " +
+      "FROM (SELECT RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10) AS phone_key, member_name, member_phone, points, claim_type FROM claims WHERE status='approved' AND created_at >= $1 AND created_at < $2) c " +
+      "WHERE c.phone_key <> '' GROUP BY c.phone_key " +
+      "ORDER BY shows DESC, show_count DESC, LOWER(COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key)) ASC, c.phone_key ASC LIMIT 5000",
+      [rankMonthRange.start, rankMonthRange.end]
     );
-    var above = parseInt((rankRes[0] && rankRes[0].above) || 0, 10);
-    if (msRank) msRank.textContent = '#' + (above + 1);
+    var rankIndex = (rankRows || []).findIndex(function(r){ return String(r.phone_key || '') === normP; });
+    if (msRank) msRank.textContent = rankIndex >= 0 ? ('#' + (rankIndex + 1)) : '#-';
     // Render performance history
     if (perfList) {
       if (total === 0) {
@@ -8760,6 +8790,9 @@ function openProofModal(bookingId, venueName) {
   var err       = document.getElementById('proofErr');
   var vn        = document.getElementById('proofModalVenue');
   var shareInp  = document.getElementById('proofSharePhone');
+  var manualBox = document.getElementById('proofManualTimeBox');
+  var arrivalInp = document.getElementById('proofArrivalTime');
+  var startInp = document.getElementById('proofShowStartTime');
   if (vn)        vn.textContent         = venueName || 'your show';
   if (preview)  { preview.src=''; preview.style.display='none'; }
   if (fileInput)  fileInput.value       = '';
@@ -8767,6 +8800,12 @@ function openProofModal(bookingId, venueName) {
   if (chooseBtn)  chooseBtn.textContent = ' Choose Photo';
   if (err)        { err.textContent = ''; err.style.display = 'none'; err.style.color = '#ff4b4b'; }
   if (shareInp)   shareInp.value        = '';
+  if (arrivalInp) arrivalInp.value      = '';
+  if (startInp) {
+    var st = _showTimes(booking);
+    startInp.value = st && st.start ? bookingLocalTimeValue(st.start) : '';
+  }
+  if (manualBox) manualBox.style.display = booking && !booking.checkinAt ? '' : 'none';
   _renderSharedList();
   document.getElementById('proofModal').classList.add('show');
 }
@@ -8799,6 +8838,21 @@ async function addSharedMember() {
 
 var _editPerformersBookingId = null;
 var _editPerformersList = [];
+
+function bookingLocalTimeValue(dateObj) {
+  if (!dateObj || isNaN(dateObj.getTime())) return '';
+  var hh = String(dateObj.getHours()).padStart(2, '0');
+  var mm = String(dateObj.getMinutes()).padStart(2, '0');
+  return hh + ':' + mm;
+}
+
+function bookingDateTimeIso(booking, timeValue) {
+  var dateKey = bookingDateKey(booking);
+  var time = String(timeValue || '').trim();
+  if (!dateKey || !/^\d{2}:\d{2}$/.test(time)) return '';
+  var d = new Date(dateKey + 'T' + time + ':00');
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
 
 function openEditPerformersModal(bookingId) {
   var b = myBookings.find(function(x){ return x.id === bookingId; }) || allBookings.find(function(x){ return x.id === bookingId; });
@@ -8862,10 +8916,10 @@ async function addEditPerformer() {
   }
   if (status) { status.style.color = 'var(--muted)'; status.textContent = 'Checking member...'; }
   try {
-    var member = await findMemberForClaim(phone);
+    var member = await lookupClaimMemberByPhone(phone);
     _editPerformersList.push({ phone: phone, name: member ? member.name || '' : '' });
     if (inp) inp.value = '';
-    if (status) { status.style.color = 'var(--muted)'; status.textContent = member ? 'Member added.' : 'Phone added. Admin can verify if needed.'; }
+    if (status) { status.style.color = 'var(--muted)'; status.textContent = member && member.name ? member.name + ' added.' : 'Phone added. Admin can verify if needed.'; }
     renderEditPerformersList();
   } catch(e) {
     _editPerformersList.push({ phone: phone, name: '' });
@@ -9079,31 +9133,72 @@ async function submitProof() {
     showToast('', 'Choose Photo', 'Please choose a photo before submitting.');
     return;
   }
+  var proofBooking = myBookings.find(function(x){ return x.id === _proofBookingId; }) ||
+                     allBookings.find(function(x){ return x.id === _proofBookingId; });
+  var manualArrivalIso = '';
+  var manualReason = '';
+  if (proofBooking && !proofBooking.checkinAt) {
+    var arrivalValue = (document.getElementById('proofArrivalTime') && document.getElementById('proofArrivalTime').value) || '';
+    var startValue = (document.getElementById('proofShowStartTime') && document.getElementById('proofShowStartTime').value) || '';
+    manualArrivalIso = bookingDateTimeIso(proofBooking, arrivalValue);
+    var manualStartIso = bookingDateTimeIso(proofBooking, startValue);
+    if (!manualArrivalIso || !manualStartIso) {
+      if (err) { err.textContent = 'Please enter arrival time and show started time before submitting.'; err.style.color = '#ff4b4b'; err.style.display = ''; }
+      showToast('', 'Time Needed', 'Enter arrival time and show started time.');
+      return;
+    }
+    if (new Date(manualArrivalIso) > new Date(manualStartIso)) {
+      if (err) { err.textContent = 'Arrival time cannot be after the show started time.'; err.style.color = '#ff4b4b'; err.style.display = ''; }
+      showToast('', 'Check Time', 'Arrival time cannot be after show started time.');
+      return;
+    }
+    manualReason = 'Manual missed check-in. Arrival: ' + arrivalValue + '; Show started: ' + startValue;
+  }
   _proofSubmitting = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
   if (err) { err.textContent = 'Uploading. Keep this screen open for a few seconds.'; err.style.color = 'var(--muted)'; err.style.display = ''; }
   try {
     // Save proof photo on the booking - proof_claimed stays FALSE until admin approves
-    await dbPatch('bookings', _proofBookingId, { proof_url: _proofFileData, proof_claimed: false });
+    var bookingUpdates = { proof_url: _proofFileData, proof_claimed: false };
+    if (manualArrivalIso) {
+      bookingUpdates.checkin_at = manualArrivalIso;
+      bookingUpdates.checkin_lat = null;
+      bookingUpdates.checkin_lng = null;
+      bookingUpdates.checkin_accuracy = null;
+      bookingUpdates.checkin_map_url = '';
+    }
+    await dbPatch('bookings', _proofBookingId, bookingUpdates);
 
     // Insert a claim for the booker themselves
     await neonSQL(
-      "INSERT INTO claims (booking_id, member_phone, member_name, status) VALUES ($1,$2,$3,'pending')",
-      [_proofBookingId, _normPhone(memberPhone||'')||memberPhone||'', memberName||'']
+      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason) " +
+      "SELECT $1,$2,$3,'pending','show',$4 WHERE NOT EXISTS (SELECT 1 FROM claims WHERE booking_id=$1 AND RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE($2::text,'[^0-9]','','g'),10) AND COALESCE(claim_type,'show')='show')",
+      [_proofBookingId, _normPhone(memberPhone||'')||memberPhone||'', memberName||'', manualReason]
     );
     // Insert claims for each additional shared member
     for (var i = 0; i < _sharedMembers.length; i++) {
       var sm = _sharedMembers[i];
       await neonSQL(
-        "INSERT INTO claims (booking_id, member_phone, member_name, status) VALUES ($1,$2,$3,'pending')",
-        [_proofBookingId, sm.phone, sm.name]
+        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason) " +
+        "SELECT $1,$2,$3,'pending','show',$4 WHERE NOT EXISTS (SELECT 1 FROM claims WHERE booking_id=$1 AND RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE($2::text,'[^0-9]','','g'),10) AND COALESCE(claim_type,'show')='show')",
+        [_proofBookingId, sm.phone, sm.name, manualReason]
       );
     }
 
     // Update local caches - proofClaimed stays false (pending), set proofUrl
     [myBookings, allBookings].forEach(function(arr) {
       var b = arr.find(function(x){ return x.id === _proofBookingId; });
-      if (b) { b.proofUrl = _proofFileData; b.proofClaimed = false; }
+      if (b) {
+        b.proofUrl = _proofFileData;
+        b.proofClaimed = false;
+        if (manualArrivalIso) {
+          b.checkinAt = manualArrivalIso;
+          b.checkinLat = null;
+          b.checkinLng = null;
+          b.checkinAccuracy = null;
+          b.checkinMapUrl = '';
+        }
+      }
     });
     saveMyBookings(); saveLocal();
     if (btn) btn.textContent = 'Submitted';
@@ -10025,7 +10120,8 @@ function renderUserBookings() {
           actionHtml = `<span class="proof-claimed-badge" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80;font-size:.72rem;"> Checked In - Show Ongoing</span>`;
         } else if (showEnded && !checkedIn) {
           actionHtml = `<span style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:.35rem;"> No check-in recorded</span>
-            <div style="font-size:.68rem;color:var(--muted);margin-top:.3rem;">Show ended - contact admin if check-in was missed</div>
+            <button class="proof-upload-btn" onclick="openProofModal('${b.id}','${(b.venue||'').replace(/'/g,"\\'")}')"> Add Time & Upload Photo</button>
+            <button class="proof-upload-btn" style="margin-top:.35rem;background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;" onclick="addMemberClaimFromRequest('${b.id}')"> Add Member</button>
             <button class="bi-cancel-btn" onclick="dismissRequest('${b.id}')" title="Remove from list" style="opacity:.65;">x Clear</button>`;
         } else if (!checkState.can) {
           actionHtml = `<span class="proof-claimed-badge" style="background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.28);color:#70BAF4;font-size:.72rem;"> Upcoming Show</span>`;
