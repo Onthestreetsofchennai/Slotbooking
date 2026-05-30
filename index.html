@@ -8480,7 +8480,7 @@ function venueMapsUrl(venue, fallbackName) {
   return googleMapsSearchUrl((venue && venue.name) || fallbackName || '');
 }
 
-const CHECKIN_RADIUS_METERS = 100;
+const CHECKIN_RADIUS_METERS = 1000;
 const CHECKIN_OPEN_MINUTES = 60;
 const CHECKIN_LATE_GRACE_MINUTES = 10;
 const SHOW_POINTS_SOLO = 3;
@@ -8701,10 +8701,6 @@ async function checkInToShow(bookingId) {
   }
   var venue = findVenueForBooking(b);
   var target = venueLatLng(venue);
-  if (!target) {
-    showToast('', 'Location Needed', 'This venue needs an exact Google Maps location before check-in can work.');
-    return;
-  }
   var now = liveNow.toISOString();
   try {
     showToast('', 'Recording Arrival', 'Please allow location access if your phone asks.');
@@ -8713,9 +8709,9 @@ async function checkInToShow(bookingId) {
       showToast('', 'Location Required', 'Please allow location access to check in from the venue.');
       return;
     }
-    var distance = distanceMeters({ lat: pos.lat, lng: pos.lng }, target);
-    if (distance == null || distance > CHECKIN_RADIUS_METERS) {
-      showToast('', 'Not Near Venue', 'You are ' + formatDistanceMeters(distance) + ' away. Please check in within 100 m of the performance location.');
+    var distance = target ? distanceMeters({ lat: pos.lat, lng: pos.lng }, target) : null;
+    if (target && (distance == null || distance > CHECKIN_RADIUS_METERS)) {
+      showToast('', 'Not Near Venue', 'You are ' + formatDistanceMeters(distance) + ' away. Please check in from the venue area.');
       return;
     }
     var updates = { checkin_at: now };
