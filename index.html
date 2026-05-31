@@ -456,6 +456,8 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 .ac-actions{display:flex;gap:.6rem;flex-shrink:0;}
 .btn-approve{background:rgba(78,203,113,.15);border:1px solid rgba(78,203,113,.4);color:var(--green);font-family:'DM Sans',sans-serif;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.5rem 1.1rem;cursor:pointer;border-radius:3px;transition:all .2s;}
 .btn-approve:hover{background:rgba(78,203,113,.3);box-shadow:0 4px 16px rgba(78,203,113,.2);}
+.btn-special{background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.4);color:#f5c842;font-family:'DM Sans',sans-serif;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.5rem 1.1rem;cursor:pointer;border-radius:3px;transition:all .2s;}
+.btn-special:hover{background:rgba(245,200,66,.24);box-shadow:0 4px 16px rgba(245,200,66,.16);}
 .btn-reject{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.35);color:var(--red);font-family:'DM Sans',sans-serif;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.5rem 1.1rem;cursor:pointer;border-radius:3px;transition:all .2s;}
 .btn-reject:hover{background:rgba(255,107,107,.25);}
 .no-pending{text-align:center;padding:2.5rem;color:var(--muted);font-size:.88rem;border:1px dashed var(--border);border-radius:4px;}
@@ -1858,7 +1860,7 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
   .gallery-grid{grid-template-columns:1fr 1fr;}
 
   /* -- Action buttons in tables -- */
-  .btn-approve,.btn-reject,.btn-del{padding:.3rem .5rem;font-size:.68rem;}
+  .btn-approve,.btn-special,.btn-reject,.btn-del{padding:.3rem .5rem;font-size:.68rem;}
 
   /* -- Toast -- */
   .toast{left:.5rem;right:.5rem;bottom:.5rem;max-width:none;}
@@ -1871,7 +1873,7 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
   .ac-info{width:100%;}
   .ac-meta{gap:.3rem;}
   .ac-actions{width:100%;display:flex;flex-direction:row;gap:.6rem;}
-  .ac-actions .btn-approve,.ac-actions .btn-reject{flex:1;justify-content:center;text-align:center;padding:.55rem .3rem;font-size:.78rem;}
+  .ac-actions .btn-approve,.ac-actions .btn-special,.ac-actions .btn-reject{flex:1;justify-content:center;text-align:center;padding:.55rem .3rem;font-size:.78rem;}
 }
 
 /* -- Medium phones 481-700px -- */
@@ -8157,7 +8159,7 @@ async function loadLeaderboard() {
     const rows = await neonSQL(
       "SELECT COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key) AS name, " +
       "MAX(c.member_phone) AS phone, c.phone_key, SUM(COALESCE(c.points,1)) AS shows, " +
-      "COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show')='show') AS show_count " +
+      "COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show') IN ('show','special_show')) AS show_count " +
       "FROM (SELECT RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10) AS phone_key, member_name, member_phone, points, claim_type FROM claims WHERE status='approved' AND created_at >= $1 AND created_at < $2) c " +
       "WHERE c.phone_key <> '' GROUP BY c.phone_key " +
       "ORDER BY shows DESC, show_count DESC, LOWER(COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key)) ASC, c.phone_key ASC LIMIT 2000",
@@ -8258,7 +8260,7 @@ async function checkShowMilestone() {
   var stored = parseInt(localStorage.getItem(key) || '-1', 10);
   try {
     var res = await neonSQL(
-      "SELECT COUNT(*) AS cnt FROM claims WHERE member_phone=$1 AND status='approved' AND COALESCE(claim_type,'show')='show'",
+      "SELECT COUNT(*) AS cnt FROM claims WHERE RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10)=$1 AND status='approved' AND COALESCE(claim_type,'show') IN ('show','special_show')",
       [_normPhone(memberPhone)]
     );
     var current = parseInt((res[0] && res[0].cnt) || 0, 10);
@@ -8413,7 +8415,10 @@ async function loadMemberStats() {
       "WHERE RIGHT(REGEXP_REPLACE(c.member_phone,'[^0-9]','','g'),10)=$1 AND c.status='approved' ORDER BY c.created_at DESC",
       [normP]
     );
-    var showClaims  = claims.filter(function(c){ return (c.claim_type||'show')==='show'; });
+    var showClaims  = claims.filter(function(c){
+      var type = c.claim_type || 'show';
+      return type === 'show' || type === 'special_show';
+    });
     var bonusClaims = claims.filter(function(c){ return c.claim_type==='volunteer'; });
     var count = showClaims.length;
     var total = claims.reduce(function(sum, c){ return sum + (Number(c.points) || 0); }, 0);
@@ -8424,7 +8429,7 @@ async function loadMemberStats() {
     var rankMonthRange = monthRangeFromKey(monthKeyFromDate());
     var rankRows = await neonSQL(
       "SELECT c.phone_key, COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key) AS name, " +
-      "SUM(COALESCE(c.points,1)) AS shows, COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show')='show') AS show_count " +
+      "SUM(COALESCE(c.points,1)) AS shows, COUNT(*) FILTER (WHERE COALESCE(c.claim_type,'show') IN ('show','special_show')) AS show_count " +
       "FROM (SELECT RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10) AS phone_key, member_name, member_phone, points, claim_type FROM claims WHERE status='approved' AND created_at >= $1 AND created_at < $2) c " +
       "WHERE c.phone_key <> '' GROUP BY c.phone_key " +
       "ORDER BY shows DESC, show_count DESC, LOWER(COALESCE(NULLIF(MAX(c.member_name),''), MAX(c.member_phone), c.phone_key)) ASC, c.phone_key ASC LIMIT 5000",
@@ -10485,7 +10490,7 @@ async function loadAdminClaims() {
       '       b.venue, b.date, b.name AS booker_name, b.proof_url ' +
       'FROM claims c ' +
       'LEFT JOIN bookings b ON b.id = c.booking_id ' +
-      "WHERE c.status IN ('pending','approved','rejected') AND COALESCE(c.claim_type,'show')='show' " +
+      "WHERE c.status IN ('pending','approved','rejected') AND COALESCE(c.claim_type,'show') IN ('show','special_show') " +
       'ORDER BY c.created_at DESC LIMIT 200'
     );
     _adminClaims = rows;
@@ -10534,6 +10539,7 @@ function _renderAdminClaims() {
           : '<span style="color:#ffc83c;font-size:.72rem;font-weight:700;"> Pending</span>';
       var btns = c.status === 'pending' && canEditClaims
         ? `<button class="btn-approve" onclick="approveClaim(${c.id})"> Approve</button>
+           <button class="btn-special" onclick="approveSpecialClaim(${c.id})">Give 1 Point</button>
            <button class="btn-reject"  onclick="rejectClaim(${c.id})">x Reject</button>`
         : '';
       return `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.04);">
@@ -10603,6 +10609,48 @@ async function approveClaim(claimId) {
   } catch(e) {
     showToast('','Error','Could not approve claim: '+(e&&e.message));
     console.error('[OTS] approveClaim:', e);
+  }
+}
+
+async function approveSpecialClaim(claimId) {
+  if (!requireAdminPerm('claims', 'claim approval')) return;
+  var claim = _adminClaims.find(function(x){ return x.id === claimId; });
+  if (!claim) { showToast('','Error','Claim not found.'); return; }
+  if (!confirm('Give exactly 1 point to this performer?')) return;
+  var bookingId  = claim.booking_id;
+  var memberName = claim.member_name || claim.member_phone || 'Member';
+  var bk = allBookings.find(function(x){ return String(x.id) === String(bookingId); });
+  try {
+    var zoneName = await getMemberZoneName(claim.member_phone || '');
+    await neonSQL(
+      "UPDATE claims SET status='approved', claim_type='special_show', reason=$2, points=1, zone_name=$3 WHERE id=$1",
+      [claimId, 'Special show credit - 1 point', zoneName]
+    );
+    await dbPatch('bookings', bookingId, { proof_claimed: true });
+    var b = allBookings.find(function(x){ return String(x.id) === String(bookingId); });
+    if (b) b.proofClaimed = true;
+    claim.status = 'approved';
+    claim.claim_type = 'special_show';
+    claim.reason = 'Special show credit - 1 point';
+    claim.points = 1;
+    _renderAdminClaims();
+    _updateClaimsBadge();
+    notifyMemberUpdate({
+      updateType: 'claim',
+      status: 'approved',
+      claimId: claimId,
+      bookingId: bookingId,
+      phone: claim.member_phone || '',
+      name: memberName,
+      venue: claim.venue || (bk && bk.venue) || '',
+      date: claim.date || (bk && bk.date) || '',
+      points: 1
+    });
+    logAdminAction('approve_special_claim', memberName + ' for booking #' + bookingId + ' (special show credit: 1 point)').catch(function(){});
+    showToast('','1 Point Added', memberName + ' gets 1 full point.');
+  } catch(e) {
+    showToast('','Error','Could not approve special credit: '+(e&&e.message));
+    console.error('[OTS] approveSpecialClaim:', e);
   }
 }
 
