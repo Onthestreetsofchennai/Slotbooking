@@ -51,6 +51,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
 /* Pre-render: hide login overlay immediately for active sessions (no flash) */
 html[data-member-active] #memberLoginPage,
 html[data-admin-active]  #memberLoginPage { display:none !important; }
+html[data-admin-active] #loginPage{display:none !important;}
 :root{
   --orange:#F0771E;--pink:#F577A1;--purple:#9E76CC;
   --violet:#62579E;--blue:#70BAF4;
@@ -7840,6 +7841,7 @@ function _saveAdminSession() {
   var data = JSON.stringify({ exp: Date.now() + 365*24*60*60*1000, v: 3, u: currentAdminUsername, r: currentAdminRole, p: currentAdminPermissions || {} });
   try { localStorage.setItem('ots_admin_session', data); } catch(e){}
   try { sessionStorage.setItem('ots_admin_session', data); } catch(e){}
+  try { document.documentElement.setAttribute('data-admin-active', '1'); } catch(e){}
   try {
     var exp = new Date(Date.now() + 365*24*60*60*1000).toUTCString();
     document.cookie = 'ots_admin_s=1; expires=' + exp + '; path=/; SameSite=Lax';
@@ -16665,7 +16667,11 @@ function restoreVisiblePage() {
     const mlp = document.getElementById('memberLoginPage');
     if (typeof otsIsAdminApp === 'function' && otsIsAdminApp()) {
       if (mlp) mlp.classList.add('hidden');
-      if (typeof adminLoggedIn !== 'undefined' && adminLoggedIn) {
+      if ((typeof adminLoggedIn !== 'undefined' && adminLoggedIn) ||
+          (typeof _hasAdminSession === 'function' && _hasAdminSession()) ||
+          document.documentElement.hasAttribute('data-admin-active')) {
+        var lp = document.getElementById('loginPage');
+        if (lp) lp.classList.remove('show');
         showPage('admin');
       } else {
         var lp = document.getElementById('loginPage');
@@ -16731,11 +16737,15 @@ function forceImmediateBootPage() {
 
     if (typeof otsIsAdminApp === 'function' && otsIsAdminApp()) {
       if (mlp) mlp.classList.add('hidden');
+      var hasAdminSession = (typeof _hasAdminSession === 'function' && _hasAdminSession()) ||
+                            (typeof adminLoggedIn !== 'undefined' && adminLoggedIn) ||
+                            document.documentElement.hasAttribute('data-admin-active');
       var adminOnlyPage = document.getElementById('page-admin');
-      if (adminOnlyPage && !hasActive && document.documentElement.hasAttribute('data-admin-active')) {
-        adminOnlyPage.classList.add('active');
-      } else {
-        var adminLogin = document.getElementById('loginPage');
+      var adminLogin = document.getElementById('loginPage');
+      if (hasAdminSession) {
+        if (adminOnlyPage && !hasActive) adminOnlyPage.classList.add('active');
+        if (adminLogin) adminLogin.classList.remove('show');
+      } else if (!hasActive) {
         if (adminLogin) adminLogin.classList.add('show');
       }
       refreshTopNavSoon();
