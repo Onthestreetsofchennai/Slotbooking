@@ -9,15 +9,15 @@
   var isAdminEntry = /admin\.html$/i.test(location.pathname || '');
   try{
     var s=!isAdminEntry ? JSON.parse(localStorage.getItem('ots_member_v2')||'null') : null;
-    if(s&&(s.phone||s.email)&&s.exp>Date.now()){
+    if(s&&(s.phone||s.email)){
       document.documentElement.setAttribute('data-member-active','1');
     }
   }catch(e){}
   try{
     var _adminActive=false;
     if(isAdminEntry){
-      try{var al=JSON.parse(localStorage.getItem('ots_admin_session')||'null');if(al&&al.exp>Date.now())_adminActive=true;}catch(_){}
-      try{var as2=JSON.parse(sessionStorage.getItem('ots_admin_session')||'null');if(as2&&as2.exp>Date.now())_adminActive=true;}catch(_){}
+      try{var al=JSON.parse(localStorage.getItem('ots_admin_session')||'null');if(al&&(al.u||al.r||al.v))_adminActive=true;}catch(_){}
+      try{var as2=JSON.parse(sessionStorage.getItem('ots_admin_session')||'null');if(as2&&(as2.u||as2.r||as2.v))_adminActive=true;}catch(_){}
       try{if(document.cookie.split(';').some(function(c){return c.trim().indexOf('ots_admin_s=1')===0;}))_adminActive=true;}catch(_){}
     }
     if(_adminActive) document.documentElement.setAttribute('data-admin-active','1');
@@ -3380,6 +3380,88 @@ body.proof-modal-open #mobile-nav{
   touch-action:auto !important;
 }
 
+/* Global modal/touch repair: every admin/member dialog must sit above the mobile nav
+   and keep its save buttons tappable. */
+body.modal-lock #mobile-nav{
+  display:none !important;
+  pointer-events:none !important;
+}
+
+body.modal-lock .modal-overlay.show{
+  pointer-events:auto !important;
+}
+
+body.modal-lock .modal,
+body.modal-lock .modal-box{
+  touch-action:auto !important;
+}
+
+body.modal-lock .modal-actions.sticky-actions,
+body.modal-lock .admin-access-actions,
+body.modal-lock #memberProfileAdminModal .modal-actions{
+  z-index:20 !important;
+}
+
+body.modal-lock button,
+body.modal-lock input,
+body.modal-lock select,
+body.modal-lock textarea{
+  pointer-events:auto !important;
+  touch-action:manipulation !important;
+}
+
+@media(max-width:700px){
+  body.modal-lock{
+    padding-bottom:0 !important;
+  }
+
+  body.modal-lock .modal-overlay.show{
+    align-items:flex-start !important;
+    justify-content:center !important;
+    overflow-x:hidden !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch !important;
+    overscroll-behavior:contain !important;
+    padding:calc(.75rem + env(safe-area-inset-top)) .75rem calc(1rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  body.modal-lock .modal,
+  body.modal-lock .admin-access-dialog,
+  body.modal-lock .admin-booking-edit-modal,
+  body.modal-lock #memberProfileAdminModal .modal{
+    width:min(94vw,560px) !important;
+    max-width:94vw !important;
+    max-height:calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch !important;
+    padding:1.15rem !important;
+    padding-top:3rem !important;
+    border-radius:12px !important;
+  }
+
+  body.modal-lock .modal-actions.sticky-actions,
+  body.modal-lock .admin-access-actions,
+  body.modal-lock #memberProfileAdminModal .modal-actions{
+    position:sticky !important;
+    bottom:0 !important;
+    display:flex !important;
+    flex-direction:column !important;
+    gap:.65rem !important;
+    margin:1rem -1.15rem -1.15rem !important;
+    padding:1rem 1.15rem calc(1rem + env(safe-area-inset-bottom)) !important;
+    background:linear-gradient(180deg,rgba(18,16,31,0),#12101f 18%,#12101f) !important;
+    border-top:1px solid rgba(255,255,255,.08) !important;
+  }
+
+  body.modal-lock .modal-actions.sticky-actions button,
+  body.modal-lock .admin-access-actions button,
+  body.modal-lock #memberProfileAdminModal .modal-actions button{
+    width:100% !important;
+    min-height:52px !important;
+    margin:0 !important;
+  }
+}
+
 
 /* Mobile scroll fix: active page scrolls, content stays visible. */
 @media(max-width:700px){
@@ -5898,7 +5980,7 @@ body.proof-modal-open #mobile-nav{
     <div id="ca-err" class="login-error" style="display:none;margin-bottom:.5rem;"></div>
     <div class="admin-access-actions">
       <button type="button" class="btn-secondary" onclick="closeCreateAdminModal()" style="flex:1;">Cancel</button>
-      <button type="button" class="btn-add-venue" id="ca-submit-btn" ontouchend="event.preventDefault();submitCreateAdmin();" onclick="submitCreateAdmin()" style="flex:2;">Create Admin</button>
+      <button type="button" class="btn-add-venue" id="ca-submit-btn" onclick="submitCreateAdmin()" style="flex:2;">Create Admin</button>
     </div>
   </div>
 </div>
@@ -5918,7 +6000,7 @@ body.proof-modal-open #mobile-nav{
     <div id="aa-err" class="login-error" style="display:none;margin-bottom:.5rem;"></div>
     <div class="admin-access-actions">
       <button type="button" class="btn-secondary" onclick="closeAdminAccessModal()" style="flex:1;">Cancel</button>
-      <button type="button" class="btn-add-venue" id="aa-save-btn" ontouchend="event.preventDefault();saveAdminAccess();" onclick="saveAdminAccess()" style="flex:2;">Save Access</button>
+      <button type="button" class="btn-add-venue" id="aa-save-btn" onclick="saveAdminAccess()" style="flex:2;">Save Access</button>
     </div>
   </div>
 </div>
@@ -5965,8 +6047,8 @@ body.proof-modal-open #mobile-nav{
     <div class="form-group"><label class="form-label">Venue Photo URL <span style="color:var(--muted);font-weight:400;">(optional - paste an image link)</span></label><input type="url" class="form-input" id="vm-image-url" placeholder="https://example.com/venue.jpg"></div>
     <div id="vm-err" class="login-error" style="display:none;margin:.2rem 0 .8rem;"></div>
     <div class="modal-actions sticky-actions">
-      <button type="button" class="btn-secondary" ontouchend="event.preventDefault();closeVenueModal();" onclick="closeVenueModal()">Cancel</button>
-      <button type="button" class="btn-primary" id="vm-save-btn" ontouchend="event.preventDefault();saveVenue();" onclick="saveVenue()">Save Venue</button>
+      <button type="button" class="btn-secondary" onclick="closeVenueModal()">Cancel</button>
+      <button type="button" class="btn-primary" id="vm-save-btn" onclick="saveVenue()">Save Venue</button>
     </div>
   </div>
 </div>
@@ -6010,7 +6092,7 @@ body.proof-modal-open #mobile-nav{
       <div id="proofSharedList" style="display:flex;flex-direction:column;gap:.35rem;"></div>
     </div>
 
-    <button type="button" class="proof-submit-btn" id="proofSubmitBtn" ontouchend="proofSubmitTap(event)" onclick="proofSubmitTap(event)" disabled style="margin-top:1rem;">Submit for Approval</button>
+    <button type="button" class="proof-submit-btn" id="proofSubmitBtn" onclick="proofSubmitTap(event)" disabled style="margin-top:1rem;">Submit for Approval</button>
     <div id="proofErr" style="color:#ff4b4b;font-size:.75rem;margin-top:.6rem;display:none;"></div>
   </div>
 </div>
@@ -6412,7 +6494,7 @@ async function workerSQL(query, params) {
     timeoutId = setTimeout(function(){ try { controller.abort(); } catch(e){} }, NEON_TIMEOUT_MS);
   }
   try {
-    var r = await fetch(dataApiUrl('/sql'), fetchOpts);
+    var r = await fetch(dataApiUrl('/data/query'), fetchOpts);
     var data = {};
     try { data = await r.json(); } catch(e) {}
     if (!r.ok || data.ok === false) throw new Error(data.error || ('Worker SQL HTTP ' + r.status));
@@ -7777,12 +7859,12 @@ function _hasAdminSession() {
   // Check localStorage
   try {
     var ls = JSON.parse(localStorage.getItem('ots_admin_session') || 'null');
-    if (ls && ls.exp > Date.now()) return true;
+    if (ls && (ls.u || ls.r || ls.v)) return true;
   } catch(e){}
   // Check sessionStorage
   try {
     var ss = JSON.parse(sessionStorage.getItem('ots_admin_session') || 'null');
-    if (ss && ss.exp > Date.now()) return true;
+    if (ss && (ss.u || ss.r || ss.v)) return true;
   } catch(e){}
   // Check cookie
   try {
@@ -7791,14 +7873,14 @@ function _hasAdminSession() {
   // window.name fallback
   try {
     var wn2={}; try{wn2=JSON.parse(window.name||'{}')}catch(_){}
-    if (wn2['ots.ots_admin_s']) { var d4=JSON.parse(wn2['ots.ots_admin_s']); if(d4&&d4.exp>Date.now()) return true; }
+    if (wn2['ots.ots_admin_s']) { var d4=JSON.parse(wn2['ots.ots_admin_s']); if(d4&&(d4.u||d4.r||d4.v)) return true; }
   } catch(e){}
   return false;
 }
 function _getAdminSessionData() {
-  try { var ls=JSON.parse(localStorage.getItem('ots_admin_session')||'null'); if(ls&&ls.exp>Date.now()) return ls; } catch(e){}
-  try { var ss=JSON.parse(sessionStorage.getItem('ots_admin_session')||'null'); if(ss&&ss.exp>Date.now()) return ss; } catch(e){}
-  try { var wn2={}; try{wn2=JSON.parse(window.name||'{}')}catch(_){} if(wn2['ots.ots_admin_s']){var d4=JSON.parse(wn2['ots.ots_admin_s']);if(d4&&d4.exp>Date.now())return d4;} } catch(e){}
+  try { var ls=JSON.parse(localStorage.getItem('ots_admin_session')||'null'); if(ls&&(ls.u||ls.r||ls.v)) return ls; } catch(e){}
+  try { var ss=JSON.parse(sessionStorage.getItem('ots_admin_session')||'null'); if(ss&&(ss.u||ss.r||ss.v)) return ss; } catch(e){}
+  try { var wn2={}; try{wn2=JSON.parse(window.name||'{}')}catch(_){} if(wn2['ots.ots_admin_s']){var d4=JSON.parse(wn2['ots.ots_admin_s']);if(d4&&(d4.u||d4.r||d4.v))return d4;} } catch(e){}
   return null;
 }
 function restoreAdminSession() {
@@ -8998,12 +9080,14 @@ function openEditPerformersModal(bookingId) {
   if (status) { status.textContent = 'You can edit this until the show end time.'; status.style.color = 'var(--muted)'; }
   renderEditPerformersList();
   var modal = document.getElementById('editPerformersModal');
+  try { document.body.classList.add('modal-lock'); } catch(e) {}
   if (modal) modal.classList.add('show');
 }
 
 function closeEditPerformersModal() {
   var modal = document.getElementById('editPerformersModal');
   if (modal) modal.classList.remove('show');
+  try { document.body.classList.remove('modal-lock'); } catch(e) {}
   _editPerformersBookingId = null;
   _editPerformersList = [];
 }
@@ -12087,6 +12171,7 @@ function openAdminBookingEdit(id) {
   document.getElementById('abe-status').value = b.status || 'pending';
   document.getElementById('abe-notes').value = b.notes || '';
   _setAdminBookingEditError('');
+  try { document.body.classList.add('modal-lock'); } catch(e) {}
   modal.classList.add('show');
 }
 
@@ -12109,6 +12194,7 @@ function openAdminEmergencyCredit() {
   document.getElementById('abe-status').value = 'confirmed';
   document.getElementById('abe-notes').value = 'Emergency admin show credit';
   _setAdminBookingEditError('');
+  try { document.body.classList.add('modal-lock'); } catch(e) {}
   modal.classList.add('show');
 }
 
@@ -12125,6 +12211,7 @@ function openAdminEmergencyUpload() {
 function closeAdminBookingEdit() {
   var modal = document.getElementById('adminBookingEditModal');
   if (modal) modal.classList.remove('show');
+  try { document.body.classList.remove('modal-lock'); } catch(e) {}
   _adminBookingEditId = null;
 }
 
@@ -13337,7 +13424,7 @@ function handleLogoClick() {
   if (_logoClicks >= 3) {
     _logoClicks = 0;
     if (otsIsMemberApp()) {
-      openAdminEntry('#admin');
+      showPage('home');
       return;
     }
     // Re-verify session from localStorage in case in-memory var was reset
@@ -14016,11 +14103,16 @@ function adminLogout() {
   stopAdminPolling();
   document.getElementById('logoutBtn').classList.remove('show');
   var _ab3 = document.getElementById('adminPanelBtn'); if (_ab3) _ab3.style.display = 'none';
-  // Show member login page so admin must re-authenticate to re-enter
+  // Show the correct login page so admin must re-authenticate to re-enter
   ['home','venues','form','admin','myrequests'].forEach(function(p){
     var el=document.getElementById('page-'+p); if(el) el.classList.remove('active');
   });
-  document.getElementById('memberLoginPage').classList.remove('hidden');
+  if (otsIsAdminApp()) {
+    var lp = document.getElementById('loginPage');
+    if (lp) lp.classList.add('show');
+  } else {
+    document.getElementById('memberLoginPage').classList.remove('hidden');
+  }
   showToast('', 'Logged Out', 'Admin session ended.');
 }
 
@@ -14463,7 +14555,7 @@ function notifyMemberChatMessage(peer, message) {
 function restoreMemberSession() {
   try {
     var s = JSON.parse(localStorage.getItem(ML_KEY) || 'null');
-    if (s && (s.phone || s.email) && s.exp > Date.now()) {
+    if (s && (s.phone || s.email)) {
       memberLoggedIn = true;
       memberPhone = s.phone || '';
       memberEmail = (typeof s.email !== 'undefined') ? s.email : '';
@@ -16774,6 +16866,7 @@ function openMemberProfileAdmin(id, editMode) {
 
     var modal = document.getElementById('memberProfileAdminModal');
     if (modal) {
+      try { document.body.classList.add('modal-lock'); } catch(_) {}
       modal.style.display = 'flex';
       modal.classList.add('show');
     }
@@ -16790,6 +16883,7 @@ function closeMemberProfileAdmin() {
     modal.classList.remove('show');
     modal.style.display = 'none';
   }
+  try { document.body.classList.remove('modal-lock'); } catch(_) {}
   _memberAdminCurrentId = '';
   _memberAdminEditMode = false;
 }
@@ -16914,6 +17008,7 @@ function _openMemberProfileAdminNow(id, editMode) {
       openMemberProfileAdmin(id, editMode);
       var modal = document.getElementById('memberProfileAdminModal');
       if (modal) {
+        try { document.body.classList.add('modal-lock'); } catch(_) {}
         modal.style.display = 'flex';
         modal.classList.add('show');
       }
@@ -16961,6 +17056,7 @@ function _forceCloseMemberProfileAdmin() {
       modal.classList.remove('show');
       modal.style.display = 'none';
     }
+    try { document.body.classList.remove('modal-lock'); } catch(_) {}
     _memberAdminCurrentId = '';
     _memberAdminEditMode = false;
   } catch(e) {
