@@ -1,8 +1,10 @@
-const OTS_CACHE = "ots-booking-v2";
+const OTS_CACHE = "ots-booking-v3";
 const OTS_ASSETS = [
   "./",
   "./index.html",
+  "./admin.html",
   "./manifest.json",
+  "./manifest-admin.json",
   "./assets/ots-brand-mark.png",
   "./assets/ots-login-logo.png"
 ];
@@ -72,6 +74,9 @@ self.addEventListener("fetch", event => {
         caches.open(OTS_CACHE).then(cache => cache.put(event.request, copy));
         return response;
       })
-      .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+      .catch(() => caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        return caches.match(url.pathname.endsWith("/admin.html") ? "./admin.html" : "./index.html");
+      }))
   );
 });

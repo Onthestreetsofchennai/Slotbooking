@@ -27,21 +27,21 @@
 </script>
 <!-- Neon DB: No SDK needed - uses native fetch() to SQL-over-HTTP endpoint -->
 <meta name="theme-color" content="#f0771e">
-<meta name="description" content="Book On The Streets performance slots.">
-<meta name="application-name" content="OTS Booking">
+<meta name="description" content="Manage On The Streets bookings, venues, members and approvals.">
+<meta name="application-name" content="OTS Admin">
 <meta name="msapplication-TileColor" content="#0d0b1a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="OTS Booking">
+<meta name="apple-mobile-web-app-title" content="OTS Admin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>ON THE STREETS - Slot Booking</title>
+<title>OTS Admin - Slot Booking</title>
 <script>
-window.OTS_APP_MODE = 'member';
+window.OTS_APP_MODE = 'admin';
 window.OTS_MEMBER_ENTRY = './index.html';
 window.OTS_ADMIN_ENTRY = './admin.html';
 </script>
-<link rel="manifest" href="./manifest.json">
+<link rel="manifest" href="./manifest-admin.json">
 <link rel="icon" type="image/png" sizes="192x192" href="./ots-icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./ots-apple-touch-icon.png">
 <!-- Updated by ChatGPT: backend OTP login integrated, Clerk removed -->
@@ -4807,7 +4807,7 @@ body.proof-modal-open #mobile-nav{
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
-<body class="app-member">
+<body class="app-admin">
 
 <div class="blob blob-1"></div>
 <div class="blob blob-2"></div>
