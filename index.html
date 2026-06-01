@@ -512,12 +512,12 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 .error-report-pill{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:2px;padding:.25rem .45rem;}
 .error-report-stack{font-family:Consolas,monospace;font-size:.72rem;line-height:1.5;color:rgba(244,240,255,.72);background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.07);border-radius:4px;padding:.7rem;white-space:pre-wrap;word-break:break-word;max-height:150px;overflow:auto;margin-top:.55rem;}
 .error-report-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;}
-.tbl-head{display:grid;grid-template-columns:minmax(190px,1.3fr) 100px 90px 80px 80px 100px 110px;background:rgba(255,255,255,.04);border-bottom:1px solid var(--border);padding:.9rem 1.4rem;}
+.tbl-head{display:grid;grid-template-columns:minmax(190px,1.3fr) 100px 90px 80px 80px 100px 110px 110px;background:rgba(255,255,255,.04);border-bottom:1px solid var(--border);padding:.9rem 1.4rem;}
 .th{font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);}
 .tbl-body{max-height:400px;overflow-y:auto;}
 .tbl-body::-webkit-scrollbar{width:4px;}
 .tbl-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px;}
-.tbl-row{display:grid;grid-template-columns:minmax(190px,1.3fr) 100px 90px 80px 80px 100px 110px;padding:1rem 1.4rem;border-bottom:1px solid rgba(255,255,255,.04);align-items:center;transition:background .15s;}
+.tbl-row{display:grid;grid-template-columns:minmax(190px,1.3fr) 100px 90px 80px 80px 100px 110px 110px;padding:1rem 1.4rem;border-bottom:1px solid rgba(255,255,255,.04);align-items:center;transition:background .15s;}
 .tbl-row:hover{background:rgba(255,255,255,.02);}
 .tbl-row:last-child{border-bottom:none;}
 .td{font-size:.82rem;color:var(--text);}
@@ -528,6 +528,11 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 .td-badge.pending{color:var(--yellow);border:1px solid rgba(245,200,66,.3);background:rgba(245,200,66,.08);}
 .td-badge.rejected{color:var(--red);border:1px solid rgba(255,107,107,.3);background:rgba(255,107,107,.08);}
 .td-badge.cancelled{color:var(--muted);border:1px solid var(--border);background:rgba(255,255,255,.04);}
+.td-followup{display:inline-flex;align-items:center;justify-content:center;text-align:center;font-size:.62rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:.34rem .55rem;border-radius:4px;line-height:1.2;}
+.td-followup.missing{color:#ff9f43;border:1px solid rgba(255,159,67,.35);background:rgba(255,159,67,.08);}
+.td-followup.pending{color:var(--yellow);border:1px solid rgba(245,200,66,.35);background:rgba(245,200,66,.08);}
+.td-followup.done{color:var(--green);border:1px solid rgba(78,203,113,.32);background:rgba(78,203,113,.08);}
+.td-followup.info{color:var(--blue);border:1px solid rgba(112,186,244,.32);background:rgba(112,186,244,.08);}
 .td-actions{display:flex;gap:.4rem;}
 .action-btn{background:transparent;border:1px solid var(--border);color:var(--muted);font-size:.68rem;padding:.28rem .6rem;cursor:pointer;border-radius:2px;transition:all .15s;font-family:'DM Sans',sans-serif;}
 .action-btn.approve:hover{border-color:var(--green);color:var(--green);}
@@ -1655,7 +1660,8 @@ html.venue-modal-open #mobile-nav{display:none!important;pointer-events:none!imp
   /* Proof / check-in */
   .tbl-row .td:nth-child(6){flex:1 1 100% !important;margin-top:.25rem;}
   /* Actions - right of footer row */
-  .tbl-row .td:nth-child(7){flex:0 0 auto !important;display:flex !important;margin-top:.3rem;}
+  .tbl-row .td:nth-child(7){flex:1 1 100% !important;margin-top:.25rem;}
+  .tbl-row .td:nth-child(8){flex:0 0 auto !important;display:flex !important;margin-top:.3rem;}
   .td-actions{flex-wrap:wrap;gap:.35rem;}
   .stat-cards{grid-template-columns:1fr 1fr;}.venue-grid{grid-template-columns:1fr 1fr;}.form-row{grid-template-columns:1fr;}.hero-stats{gap:1.5rem;}.cta-card{padding:2rem 1.5rem;}.cta-right{align-items:stretch;}}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -5483,6 +5489,7 @@ body.proof-modal-open #mobile-nav{
           <div class="th">Time</div>
           <div class="th">Status</div>
           <div class="th">Proof</div>
+          <div class="th">Follow Up</div>
           <div class="th">Actions</div>
         </div>
         <div class="tbl-body" id="adminTable">
@@ -10816,8 +10823,23 @@ async function loadZoneMonthlyReport() {
       "GROUP BY 1 ORDER BY total_points DESC, zone_name ASC",
       [range.start, range.end]
     );
-    _zoneMonthlyRows = (rows || []).map(function(r, i) {
-      return { rank:i+1, zoneName:r.zone_name || 'No Zone', totalPoints:Number(r.total_points || 0), memberCount:Number(r.member_count || 0) };
+    var zoneMap = {};
+    parseZoneNames(zoneNames).forEach(function(z) {
+      zoneMap[z] = { zoneName:z, totalPoints:0, memberCount:0 };
+    });
+    (rows || []).forEach(function(r) {
+      var name = r.zone_name || 'No Zone';
+      zoneMap[name] = {
+        zoneName:name,
+        totalPoints:Number(r.total_points || 0),
+        memberCount:Number(r.member_count || 0)
+      };
+    });
+    _zoneMonthlyRows = Object.values(zoneMap).sort(function(a, b) {
+      return (b.totalPoints - a.totalPoints) || String(a.zoneName || '').localeCompare(String(b.zoneName || ''));
+    }).map(function(r, i) {
+      r.rank = i + 1;
+      return r;
     });
     renderZoneMonthlyReport(range.key);
   } catch(e) {
@@ -11774,6 +11796,13 @@ function setFilter(f) {
 function isBookingNeedsProofOrPoint(b) {
   return !!(b && b.status === 'confirmed' && isBookingShowOver(b, new Date()) && (!b.proofUrl || !b.proofClaimed));
 }
+function bookingFollowUpState(b) {
+  if (!b || b.status !== 'confirmed') return { cls:'info', label:'-' };
+  if (!isBookingShowOver(b, new Date())) return { cls:'info', label:'Upcoming' };
+  if (!b.proofUrl) return { cls:'missing', label:'Photo Missing' };
+  if (!b.proofClaimed) return { cls:'pending', label:'Claim Pending' };
+  return { cls:'done', label:'Claimed' };
+}
 function filterTable() {
   const q=(document.getElementById('adminSearch')?.value||'').toLowerCase();
   bookingPage = Math.max(1, bookingPage || 1);
@@ -11835,7 +11864,9 @@ function renderAdminTable(rows) {
     return;
   }
   var pageRows = rows.slice((bookingPage - 1) * bookingPageSize, bookingPage * bookingPageSize);
-  tbody.innerHTML=pageRows.map(b=>`
+  tbody.innerHTML=pageRows.map(b=>{
+    var follow = bookingFollowUpState(b);
+    return `
     <div class="tbl-row" id="admin-booking-${b.id}">
       <div class="td">
         <div style="font-weight:700;font-size:.85rem">${otsEscapeHtml(b.name || '-')}</div>
@@ -11873,6 +11904,7 @@ function renderAdminTable(rows) {
              </div>`
           : `<span style="font-size:.68rem;color:var(--muted);">-</span>`}
       </div>
+      <div class="td"><span class="td-followup ${follow.cls}">${follow.label}</span></div>
       <div class="td td-actions">
         ${canApproveSlots ? `<button class="btn-secondary" style="font-size:.62rem;padding:.24rem .45rem;margin-top:.3rem;" onclick="openAdminBookingEdit('${b.id}')">Edit</button>` : ''}
         ${b.status==='pending' && canApproveSlots ? `
@@ -11882,7 +11914,8 @@ function renderAdminTable(rows) {
         :`<span style="font-size:.72rem;color:var(--muted)">-</span>`}
         ${canRescueShows ? `<button class="btn-secondary" style="font-size:.62rem;padding:.24rem .45rem;margin-top:.3rem;" onclick="adminRestoreClearedRequest('${b.id}')">Restore</button>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function formatCheckinTime(value) {
   if (!value) return '';
