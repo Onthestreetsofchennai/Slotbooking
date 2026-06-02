@@ -1,10 +1,14 @@
-const OTS_CACHE = "ots-booking-v5";
+const OTS_CACHE = "ots-booking-v7";
 const OTS_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
   "./manifest.json",
   "./manifest-admin.json",
+  "./assets/build/ots-main.css",
+  "./assets/build/ots-app-core.js",
+  "./assets/build/ots-boot.js",
+  "./assets/build/ots-mobile-scroll.js",
   "./assets/ots-brand-mark.png",
   "./assets/ots-login-logo.png"
 ];
