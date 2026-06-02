@@ -1,16 +1,16 @@
-const OTS_CACHE = "ots-booking-v7";
+const OTS_CACHE = "ots-booking-v8";
 const OTS_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
   "./manifest.json",
   "./manifest-admin.json",
-  "./assets/build/ots-main.css",
-  "./assets/build/ots-app-core.js",
-  "./assets/build/ots-boot.js",
-  "./assets/build/ots-mobile-scroll.js",
-  "./assets/ots-brand-mark.png",
-  "./assets/ots-login-logo.png"
+  "./ots-main.css",
+  "./ots-app-core.js",
+  "./ots-boot.js",
+  "./ots-mobile-scroll.js",
+  "./ots-brand-mark.png",
+  "./ots-login-logo.png"
 ];
 
 self.addEventListener("install", event => {
@@ -41,8 +41,8 @@ self.addEventListener("message", event => {
   const options = {
     body: payload.body || "",
     tag: payload.tag || "ots-booking",
-    icon: "./assets/ots-brand-mark.png",
-    badge: "./assets/ots-brand-mark.png",
+    icon: "./ots-brand-mark.png",
+    badge: "./ots-brand-mark.png",
     data: payload.data || { url: "./index.html" },
     requireInteraction: true
   };
