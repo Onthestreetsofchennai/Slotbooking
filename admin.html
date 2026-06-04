@@ -649,6 +649,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
       <button class="atab" id="atab-ads" onclick="switchAdminTab('ads')"> Community News</button>
       <button class="atab" id="atab-members" onclick="switchAdminTab('members')"> Members</button>
       <button class="atab" id="atab-points" onclick="switchAdminTab('points')"> Points</button>
+      <button class="atab" id="atab-reports" onclick="switchAdminTab('reports')"> Monthly Reports</button>
       <button class="atab" id="atab-errors" onclick="switchAdminTab('errors')"> Error Reports</button>
       <button class="atab" id="atab-settings" onclick="switchAdminTab('settings')"> Settings</button>
       <button class="atab" id="atab-superadmin-btn" onclick="switchAdminTab('superadmin')" style="display:none;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-color:transparent;"> Super Admin</button>
@@ -968,6 +969,49 @@ window.OTS_ADMIN_ENTRY = './admin.html';
           </div>
         </div>
         <div id="withdrawList"><div style="color:var(--muted);font-size:.83rem;text-align:center;padding:2rem;">Click Refresh to load approved points.</div></div>
+      </div>
+    </div>
+
+    <!-- MONTHLY REPORTS TAB -->
+    <div id="atab-content-reports" style="display:none;">
+      <div class="monthly-report-panel">
+        <div class="monthly-report-head">
+          <div>
+            <div class="monthly-report-kicker">Report Builder</div>
+            <div class="monthly-report-title">Monthly Reports</div>
+            <div class="monthly-report-sub">Create a GCC/Foundation style monthly report from confirmed show data, proof photos and footfall numbers.</div>
+          </div>
+          <div class="monthly-report-actions">
+            <button class="filter-btn" type="button" onclick="generateMonthlyReportPreview(true)">Refresh Preview</button>
+            <button class="btn-add-venue perm-reports-edit" type="button" onclick="exportMonthlyReportPDF()">Print / Save PDF</button>
+          </div>
+        </div>
+
+        <div class="monthly-report-controls">
+          <label>
+            <span>Month</span>
+            <input type="month" class="form-input" id="monthlyReportMonth" onchange="generateMonthlyReportPreview(true)">
+          </label>
+          <label>
+            <span>Report Type</span>
+            <select class="form-input" id="monthlyReportType" onchange="generateMonthlyReportPreview(true)">
+              <option value="all">All Shows</option>
+              <option value="gcc">GCC Venue</option>
+              <option value="foundation">Foundation Venue</option>
+              <option value="partner">Partner Venue</option>
+            </select>
+          </label>
+          <label>
+            <span>Report Title</span>
+            <input type="text" class="form-input" id="monthlyReportTitle" placeholder="GCC REPORT JUN 2026" oninput="saveMonthlyReportTitleDraft()">
+          </label>
+        </div>
+
+        <div id="monthlyReportSummary" class="monthly-report-summary"></div>
+        <div id="monthlyReportWarnings" class="monthly-report-warnings"></div>
+        <div id="monthlyReportPreview" class="monthly-report-preview">
+          <div class="table-empty">Choose a month to preview report data.</div>
+        </div>
       </div>
     </div>
 

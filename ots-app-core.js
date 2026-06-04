@@ -4411,8 +4411,8 @@ function refreshAdmin(attempt) {
   setAdminLoadingState(true, attempt ? 'Retrying live admin data...' : 'Loading live admin data...');
   var tab = currentAdminTab || 'venues';
   if (tab === 'approvals') tab = 'venues';
-  var loadVenues = ['venues','import','bookings','superadmin'].indexOf(tab) > -1;
-  var loadBookings = ['venues','bookings','claims','points','superadmin'].indexOf(tab) > -1;
+  var loadVenues = ['venues','import','bookings','reports','superadmin'].indexOf(tab) > -1;
+  var loadBookings = ['venues','bookings','claims','points','reports','superadmin'].indexOf(tab) > -1;
   if (tab === 'members') loadMembers().catch(function(){});
   if (tab === 'photos') loadPerfPhotos().catch(function(){});
 
@@ -4471,6 +4471,7 @@ function _refreshAdminUI() {
   updatePendingBadge();
   if (currentAdminTab==='venues')    renderVenueManager();
   if (currentAdminTab==='bookings')  filterTable();
+  if (currentAdminTab==='reports')   generateMonthlyReportPreview(false);
 }
 
 let _adminSelfHealTimer = null;
@@ -4501,7 +4502,7 @@ function switchAdminTab(tab) {
   currentAdminTab = tab;
   closeAdminNotifPanel();
   updateAdminNotifCount();
-  ['venues','import','bookings','claims','photos','ads','members','points','errors','settings','superadmin'].forEach(t => {
+  ['venues','import','bookings','claims','photos','ads','members','points','reports','errors','settings','superadmin'].forEach(t => {
     var tbtn = document.getElementById(t==='superadmin' ? 'atab-superadmin-btn' : 'atab-'+t);
     var pane = document.getElementById('atab-content-'+t);
     if (tbtn) tbtn.classList.toggle('active', t===tab);
@@ -4514,6 +4515,7 @@ function switchAdminTab(tab) {
   if (tab==='ads')         renderCommunityAdsAdmin();
   if (tab==='members')     loadMembers();
   if (tab==='points')      { initZoneMonthInputs(); loadZoneMonthlyReport(); loadZoneWinningHistory(); loadWithdrawList(); }
+  if (tab==='reports')     { initMonthlyReportControls(); generateMonthlyReportPreview(true); }
   if (tab==='errors')      loadClientErrorReports();
   if (tab==='settings')    {
     var ph=document.getElementById('settings-admin-phone'); if(ph) ph.value=adminPhone||'';
@@ -6504,6 +6506,386 @@ function adminCancel(id) {
 }
 
 // =======================================
+// ADMIN - MONTHLY REPORT BUILDER
+// =======================================
+const MONTHLY_REPORT_DRAFT_KEY = 'ots_monthly_report_draft_v1';
+var _monthlyReportRows = [];
+
+function localMonthKey(date) {
+  var d = date || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function monthLabelFromKey(monthKey, shortName) {
+  var parts = String(monthKey || '').split('-').map(Number);
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return monthKey || '';
+  var names = shortName
+    ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return names[parts[1] - 1] + ' ' + parts[0];
+}
+
+function dayNameFromIso(iso) {
+  var p = String(iso || '').split('-').map(Number);
+  if (p.length !== 3 || !p[0] || !p[1] || !p[2]) return '';
+  return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(p[0], p[1] - 1, p[2]).getDay()];
+}
+
+function readMonthlyReportDraft() {
+  try { return JSON.parse(localStorage.getItem(MONTHLY_REPORT_DRAFT_KEY) || '{}') || {}; }
+  catch(e) { return {}; }
+}
+
+function writeMonthlyReportDraft(draft) {
+  try { localStorage.setItem(MONTHLY_REPORT_DRAFT_KEY, JSON.stringify(draft || {})); } catch(e) {}
+}
+
+function monthlyReportDraftField(monthKey, type, bookingId, field) {
+  return [monthKey || '', type || 'all', bookingId || '', field || ''].join('|');
+}
+
+function monthlyReportDefaultTitle(monthKey, type) {
+  var prefix = 'OTS';
+  if (type === 'gcc') prefix = 'GCC';
+  if (type === 'foundation') prefix = 'FOUNDATION';
+  if (type === 'partner') prefix = 'PARTNER';
+  return prefix + ' REPORT ' + String(monthLabelFromKey(monthKey, true)).toUpperCase();
+}
+
+function getMonthlyReportContext() {
+  var monthEl = document.getElementById('monthlyReportMonth');
+  var typeEl = document.getElementById('monthlyReportType');
+  var titleEl = document.getElementById('monthlyReportTitle');
+  var monthKey = (monthEl && monthEl.value) || localMonthKey();
+  var type = (typeEl && typeEl.value) || 'all';
+  var draft = readMonthlyReportDraft();
+  var titleKey = monthlyReportDraftField(monthKey, type, '_report', 'title');
+  var title = (titleEl && titleEl.value.trim()) || draft[titleKey] || monthlyReportDefaultTitle(monthKey, type);
+  return {
+    monthKey: monthKey,
+    type: type,
+    title: title,
+    typeLabel: type === 'gcc' ? 'GCC Venue' : type === 'foundation' ? 'Foundation Venue' : type === 'partner' ? 'Partner Venue' : 'All Shows'
+  };
+}
+
+function initMonthlyReportControls() {
+  var monthEl = document.getElementById('monthlyReportMonth');
+  var typeEl = document.getElementById('monthlyReportType');
+  var titleEl = document.getElementById('monthlyReportTitle');
+  if (monthEl && !monthEl.value) monthEl.value = localMonthKey();
+  if (typeEl && !typeEl.value) typeEl.value = 'all';
+  if (titleEl) {
+    var ctx = getMonthlyReportContext();
+    var draft = readMonthlyReportDraft();
+    var titleKey = monthlyReportDraftField(ctx.monthKey, ctx.type, '_report', 'title');
+    titleEl.value = titleEl.value || draft[titleKey] || monthlyReportDefaultTitle(ctx.monthKey, ctx.type);
+  }
+}
+
+function saveMonthlyReportTitleDraft() {
+  var ctx = getMonthlyReportContext();
+  var titleEl = document.getElementById('monthlyReportTitle');
+  var draft = readMonthlyReportDraft();
+  draft[monthlyReportDraftField(ctx.monthKey, ctx.type, '_report', 'title')] = titleEl ? titleEl.value.trim() : '';
+  writeMonthlyReportDraft(draft);
+}
+
+function syncMonthlyReportTitle(ctx) {
+  var titleEl = document.getElementById('monthlyReportTitle');
+  if (!titleEl) return;
+  var draft = readMonthlyReportDraft();
+  var titleKey = monthlyReportDraftField(ctx.monthKey, ctx.type, '_report', 'title');
+  if (draft[titleKey]) {
+    titleEl.value = draft[titleKey];
+    return;
+  }
+  var current = titleEl.value.trim();
+  var looksAuto = /^(OTS|GCC|FOUNDATION|PARTNER) REPORT [A-Z]{3} \d{4}$/i.test(current);
+  if (!current || looksAuto) titleEl.value = monthlyReportDefaultTitle(ctx.monthKey, ctx.type);
+}
+
+function monthlyReportFootfallFor(row, ctx) {
+  var draft = readMonthlyReportDraft();
+  var key = monthlyReportDraftField(ctx.monthKey, ctx.type, row.id, 'footfall');
+  var val = draft[key];
+  var n = Number(val);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function monthlyReportVenueType(venue, booking) {
+  return normalizeVenueType((venue && venue.venueType) || '', (venue && venue.name) || (booking && booking.venue) || '');
+}
+
+function monthlyReportScopeMatches(venue, booking, type) {
+  if (type === 'all') return true;
+  var vt = monthlyReportVenueType(venue, booking).toLowerCase();
+  if (type === 'gcc') return vt === 'gcc venue';
+  if (type === 'foundation') return vt === 'foundation venue';
+  if (type === 'partner') return vt === 'partner venue';
+  return true;
+}
+
+function monthlyReportWeekLabel(iso) {
+  var day = Number(String(iso || '').split('-')[2] || 1);
+  if (!day || day < 1) return 'Week 1';
+  return 'Week ' + Math.max(1, Math.ceil(day / 7));
+}
+
+function monthlyReportDisplayDate(iso) {
+  var p = String(iso || '').split('-');
+  if (p.length !== 3) return iso || '-';
+  return p[2] + '.' + p[1] + '.' + p[0];
+}
+
+function buildMonthlyReportRows(ctx) {
+  ctx = ctx || getMonthlyReportContext();
+  var rows = (allBookings || []).filter(function(b) {
+    var date = normalizeVenueDate(b && b.date);
+    if (!date || date.slice(0, 7) !== ctx.monthKey) return false;
+    var status = normalizeStatus(b && b.status, '');
+    if (['confirmed','approved','completed'].indexOf(status) === -1) return false;
+    var venue = findVenueForBooking(b);
+    return monthlyReportScopeMatches(venue, b, ctx.type);
+  }).map(function(b) {
+    var venue = findVenueForBooking(b);
+    var date = normalizeVenueDate(b.date);
+    var timeRange = venue ? formatVenueTimeRange(venue) : '-';
+    var row = {
+      id: String(b.id || ''),
+      booking: b,
+      venue: venue || null,
+      venueName: (venue && venue.name) || b.venue || '-',
+      venueType: monthlyReportVenueType(venue, b),
+      date: date,
+      dayName: dayNameFromIso(date),
+      timeRange: timeRange,
+      teamName: b.name || '-',
+      bookedBy: getBookingPersonName(b) || '',
+      performanceType: b.type || '',
+      performers: bookingPerformersText(b) || b.name || '',
+      photoUrl: isProofPlaceholder(b.proofUrl) ? '' : (b.proofUrl || ''),
+      hasProof: !!b.proofUrl,
+      sortMs: bookingStartTimeMs(b)
+    };
+    row.footfall = monthlyReportFootfallFor(row, ctx);
+    return row;
+  });
+  rows.sort(function(a, b) {
+    return (a.sortMs || 0) - (b.sortMs || 0) || a.venueName.localeCompare(b.venueName);
+  });
+  return rows;
+}
+
+function computeMonthlyReportSummary(rows) {
+  var venueSeen = {};
+  var teamSeen = {};
+  var daySeen = {};
+  var totalFootfall = 0;
+  var footfallFilled = 0;
+  var missingPhotos = 0;
+  (rows || []).forEach(function(row) {
+    if (row.venueName) venueSeen[String(row.venueName).toLowerCase()] = true;
+    if (row.teamName) teamSeen[String(row.teamName).toLowerCase()] = true;
+    if (row.date) daySeen[row.date] = true;
+    if (row.footfall > 0) {
+      totalFootfall += row.footfall;
+      footfallFilled++;
+    }
+    if (!row.hasProof) missingPhotos++;
+  });
+  return {
+    venues: Object.keys(venueSeen).length,
+    shows: rows.length,
+    bands: Object.keys(teamSeen).length,
+    days: Object.keys(daySeen).length,
+    totalFootfall: totalFootfall,
+    averageFootfall: rows.length ? Math.round(totalFootfall / rows.length) : 0,
+    missingFootfall: Math.max(0, rows.length - footfallFilled),
+    missingPhotos: missingPhotos
+  };
+}
+
+function renderMonthlyReportSummary(ctx, rows) {
+  var el = document.getElementById('monthlyReportSummary');
+  if (!el) return;
+  var s = computeMonthlyReportSummary(rows || []);
+  el.innerHTML =
+    '<div class="monthly-report-stat"><span>Venues</span><strong>' + s.venues + '</strong></div>' +
+    '<div class="monthly-report-stat"><span>Shows</span><strong>' + s.shows + '</strong></div>' +
+    '<div class="monthly-report-stat"><span>Bands</span><strong>' + s.bands + '</strong></div>' +
+    '<div class="monthly-report-stat"><span>Days</span><strong>' + s.days + '</strong></div>' +
+    '<div class="monthly-report-stat"><span>Total Footfall</span><strong>' + s.totalFootfall + '</strong></div>' +
+    '<div class="monthly-report-stat"><span>Average / Show</span><strong>' + s.averageFootfall + '</strong></div>';
+
+  var warn = document.getElementById('monthlyReportWarnings');
+  if (warn) {
+    var notes = [];
+    if (s.missingFootfall) notes.push(s.missingFootfall + ' show(s) need footfall before the report looks complete.');
+    if (s.missingPhotos) notes.push(s.missingPhotos + ' show(s) do not have proof photos yet.');
+    if (!rows.length) notes.push('No confirmed shows found for ' + otsEscapeHtml(ctx.typeLabel) + ' in ' + otsEscapeHtml(monthLabelFromKey(ctx.monthKey, false)) + '.');
+    warn.innerHTML = notes.length ? notes.map(function(n){ return '<div>' + otsEscapeHtml(n) + '</div>'; }).join('') : '<div class="ok">Report data looks complete.</div>';
+  }
+}
+
+function setMonthlyReportFootfall(bookingId, value) {
+  var ctx = getMonthlyReportContext();
+  var draft = readMonthlyReportDraft();
+  var key = monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'footfall');
+  var n = Math.max(0, Math.round(Number(value) || 0));
+  if (n) draft[key] = String(n);
+  else delete draft[key];
+  writeMonthlyReportDraft(draft);
+  _monthlyReportRows.forEach(function(row) {
+    if (String(row.id) === String(bookingId)) row.footfall = n;
+  });
+  renderMonthlyReportSummary(ctx, _monthlyReportRows);
+}
+
+function generateMonthlyReportPreview(allowRefresh) {
+  var preview = document.getElementById('monthlyReportPreview');
+  if (!preview) return;
+  initMonthlyReportControls();
+  if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !allBookings.length && !_adminDataLoading) {
+    preview.innerHTML = '<div class="table-empty">Loading report data...</div>';
+    refreshAdmin().then(function(){ generateMonthlyReportPreview(false); });
+    return;
+  }
+  var ctx = getMonthlyReportContext();
+  syncMonthlyReportTitle(ctx);
+  ctx = getMonthlyReportContext();
+  _monthlyReportRows = buildMonthlyReportRows(ctx);
+  renderMonthlyReportSummary(ctx, _monthlyReportRows);
+  if (!_monthlyReportRows.length) {
+    preview.innerHTML = '<div class="table-empty">No confirmed shows found for this report.</div>';
+    return;
+  }
+  preview.innerHTML =
+    '<div class="monthly-report-table-head">' +
+      '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div>' +
+    '</div>' +
+    _monthlyReportRows.map(function(row) {
+      var photoLabel = row.hasProof ? 'Available' : 'Missing';
+      return '<div class="monthly-report-row">' +
+        '<div><strong>' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + '</strong><span>' + otsEscapeHtml(row.dayName) + '</span></div>' +
+        '<div><strong>' + otsEscapeHtml(row.venueName) + '</strong><span>' + otsEscapeHtml(row.venueType || 'Venue') + '</span></div>' +
+        '<div><strong>' + otsEscapeHtml(row.teamName) + '</strong><span>Booked by ' + otsEscapeHtml(row.bookedBy || '-') + '</span></div>' +
+        '<div>' + otsEscapeHtml(row.timeRange) + '</div>' +
+        '<div><input type="number" min="0" step="1" value="' + otsEscapeHtml(row.footfall || '') + '" placeholder="0" oninput="setMonthlyReportFootfall(\'' + otsJsString(row.id) + '\', this.value)"></div>' +
+        '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span></div>' +
+      '</div>';
+    }).join('');
+}
+
+async function hydrateMonthlyReportPhotos(rows) {
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var b = row.booking;
+    if (!b || !isProofPlaceholder(b.proofUrl)) continue;
+    try {
+      var proof = await fetchBookingProofUrl(b.id);
+      if (proof) {
+        b.proofUrl = proof;
+        row.photoUrl = proof;
+        row.hasProof = true;
+      }
+    } catch(e) {
+      console.warn('[OTS] report proof load failed for booking', b && b.id, e);
+    }
+  }
+}
+
+function monthlyReportLogosHtml() {
+  var otsLogo = new URL('ots-brand-mark.png', location.href).href;
+  var gccLogo = new URL('gcc-logo.png', location.href).href;
+  var smartCityLogo = new URL('chennai-smart-city.png', location.href).href;
+  return '<div class="report-logo-strip">' +
+    '<img class="report-logo-gcc" src="' + otsEscapeHtml(gccLogo) + '" alt="Greater Chennai Corporation">' +
+    '<img class="report-logo-smart" src="' + otsEscapeHtml(smartCityLogo) + '" alt="Chennai Smart City Limited">' +
+    '<img class="report-logo-ots" src="' + otsEscapeHtml(otsLogo) + '" alt="On The Streets of Chennai">' +
+  '</div>';
+}
+
+function buildMonthlyReportPrintHtml(ctx, rows) {
+  var summary = computeMonthlyReportSummary(rows);
+  var generated = new Date().toLocaleString('en-IN', { dateStyle:'medium', timeStyle:'short' });
+  var logoHtml = monthlyReportLogosHtml();
+  var prevWeek = '';
+  var showPages = rows.map(function(row, idx) {
+    var week = monthlyReportWeekLabel(row.date);
+    var weekHtml = week !== prevWeek ? '<div class="report-week-title">' + otsEscapeHtml(week) + '</div>' : '';
+    prevWeek = week;
+    var photo = row.photoUrl
+      ? '<img src="' + otsEscapeHtml(row.photoUrl) + '" alt="' + otsEscapeHtml(row.teamName) + ' at ' + otsEscapeHtml(row.venueName) + '">'
+      : '<div class="report-photo-empty">Photo not attached</div>';
+    return '<section class="report-page report-show-page">' +
+      logoHtml +
+      weekHtml +
+      '<div class="report-show-line">' +
+        '<strong>' + (idx + 1) + '. ' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + ' ' + otsEscapeHtml(String(row.dayName).toUpperCase()) + '</strong>' +
+        '<span>' + otsEscapeHtml(row.venueName) + '</span>' +
+        '<span>' + otsEscapeHtml(row.timeRange) + '</span>' +
+        '<span>' + otsEscapeHtml(row.teamName) + '</span>' +
+        '<span>' + otsEscapeHtml(row.footfall || 0) + ' Footfall</span>' +
+      '</div>' +
+      '<div class="report-photo-box">' + photo + '</div>' +
+    '</section>';
+  }).join('');
+
+  return '<!doctype html><html><head><meta charset="utf-8"><title>' + otsEscapeHtml(ctx.title) + '</title>' +
+    '<style>' +
+    '@page{size:landscape;margin:0;}*{box-sizing:border-box;}body{margin:0;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;}' +
+    '.report-page{width:100vw;min-height:100vh;page-break-after:always;padding:42px 58px;position:relative;display:flex;flex-direction:column;background:#fff;overflow:hidden;}' +
+    '.report-logo-strip{position:absolute;top:22px;right:40px;display:flex;align-items:center;gap:18px;height:82px;}' +
+    '.report-logo-strip img{display:block;object-fit:contain;}.report-logo-gcc{width:78px;height:78px;}.report-logo-smart{width:190px;height:66px;}.report-logo-ots{width:76px;height:76px;}' +
+    '.cover{justify-content:center;align-items:center;text-align:center;}.cover h1{font-size:74px;line-height:1.05;margin:0;text-transform:uppercase;letter-spacing:.02em;}.cover p{font-size:22px;margin:22px 0 0;color:#555;}' +
+    '.summary h2,.divider h2{font-size:52px;margin:110px 0 28px;text-transform:uppercase;}.summary-table{width:74%;margin:auto;border-collapse:collapse;font-size:26px;}.summary-table td{border:3px solid #111;padding:18px 22px;}.summary-table td:last-child{text-align:right;font-weight:800;}' +
+    '.divider{justify-content:center;align-items:center;text-align:center;background:#f6f7fb;}.divider h2{margin:0;font-size:58px;max-width:900px;}' +
+    '.report-week-title{font-size:42px;font-weight:900;margin:92px 0 18px;text-transform:uppercase;}.report-show-line{font-size:22px;line-height:1.45;display:flex;gap:14px;flex-wrap:wrap;margin:82px 0 24px;align-items:center;}.report-show-line span:not(:last-child)::after{content:"/";margin-left:14px;color:#777;}' +
+    '.report-photo-box{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;border:2px solid #e3e6ee;background:#fafafa;}.report-photo-box img{max-width:100%;max-height:100%;object-fit:contain;}.report-photo-empty{font-size:28px;color:#999;}' +
+    '@media print{.report-page{width:100vw;height:100vh;}}' +
+    '</style></head><body>' +
+    '<section class="report-page cover">' + logoHtml + '<h1>' + otsEscapeHtml(ctx.title) + '</h1><p>' + otsEscapeHtml(ctx.typeLabel) + ' / Generated ' + otsEscapeHtml(generated) + '</p></section>' +
+    '<section class="report-page summary">' + logoHtml + '<h2>Summary</h2><table class="summary-table"><tbody>' +
+      '<tr><td>Number of Venues</td><td>' + summary.venues + '</td></tr>' +
+      '<tr><td>Number of Shows</td><td>' + summary.shows + '</td></tr>' +
+      '<tr><td>Number of Bands</td><td>' + summary.bands + '</td></tr>' +
+      '<tr><td>Number of Days Performed</td><td>' + summary.days + '</td></tr>' +
+      '<tr><td>Total Footfall</td><td>' + summary.totalFootfall + '</td></tr>' +
+      '<tr><td>Average Footfall per Show</td><td>' + summary.averageFootfall + '</td></tr>' +
+    '</tbody></table></section>' +
+    '<section class="report-page divider">' + logoHtml + '<h2>' + otsEscapeHtml(ctx.typeLabel) + '<br>Monthly Report - ' + otsEscapeHtml(monthLabelFromKey(ctx.monthKey, false)) + '</h2></section>' +
+    showPages +
+    '</body></html>';
+}
+
+async function exportMonthlyReportPDF() {
+  if (!requireAdminPerm('reports', 'monthly report export')) return;
+  initMonthlyReportControls();
+  var ctx = getMonthlyReportContext();
+  var rows = buildMonthlyReportRows(ctx);
+  if (!rows.length) {
+    showToast('', 'No Report Data', 'No confirmed shows found for this month and type.');
+    return;
+  }
+  showToast('', 'Preparing Report', 'Loading proof photos for the PDF preview...');
+  await hydrateMonthlyReportPhotos(rows);
+  var html = buildMonthlyReportPrintHtml(ctx, rows);
+  var win = window.open('', '_blank');
+  if (!win) {
+    showToast('', 'Popup Blocked', 'Please allow popups, then try Print / Save PDF again.');
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  setTimeout(function() {
+    try { win.focus(); win.print(); } catch(e) {}
+  }, 900);
+  logAdminAction('monthly_report_export', ctx.title + ' / ' + rows.length + ' shows').catch(function(){});
+}
+
+// =======================================
 // EXPORT CSV
 // =======================================
 function exportCSV() {
@@ -7208,7 +7590,8 @@ var ADMIN_PERMISSION_DEFS = [
   { key:'photos',  label:'Front photos',   desc:'Upload, reorder, rename and remove home page photos.' },
   { key:'ads',     label:'Community news', desc:'Create and manage event ads and news on the home page.' },
   { key:'members', label:'Members',        desc:'Add/edit members, approve zones and activate accounts.' },
-  { key:'points',  label:'Points',         desc:'Manage monthly zone reports, CSV point imports, volunteer points and corrections.' }
+  { key:'points',  label:'Points',         desc:'Manage monthly zone reports, CSV point imports, volunteer points and corrections.' },
+  { key:'reports', label:'Monthly reports', desc:'Generate and export GCC/Foundation monthly reports.' }
 ];
 function parseAdminPermissions(value) {
   if (!value) return {};
@@ -7917,7 +8300,8 @@ function _applyAdminPermissionUi() {
     {cls:'perm-photos-edit', key:'photos'},
     {cls:'perm-ads-edit', key:'ads'},
     {cls:'perm-members-edit', key:'members'},
-    {cls:'perm-points-edit', key:'points'}
+    {cls:'perm-points-edit', key:'points'},
+    {cls:'perm-reports-edit', key:'reports'}
   ].forEach(function(item) {
     var allowed = hasAdminPerm(item.key);
     document.querySelectorAll('.' + item.cls).forEach(function(el) {
