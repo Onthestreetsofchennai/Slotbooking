@@ -4442,8 +4442,22 @@ function refreshAdmin(attempt) {
     results.forEach(function(result, i) {
       var key = tasks[i].key;
       if (result.status === 'fulfilled') {
-        if (key === 'venues') venues = mapVenueRows(result.value || []);
-        if (key === 'bookings') allBookings = mapBookingRows(result.value || []);
+        if (key === 'venues') {
+          var mappedVenues = mapVenueRows(result.value || []);
+          if (currentAdminTab === 'reports' && !mappedVenues.length && venues.length && attempt < 3) {
+            needsRetry = true;
+          } else {
+            venues = mappedVenues;
+          }
+        }
+        if (key === 'bookings') {
+          var mappedBookings = mapBookingRows(result.value || []);
+          if (currentAdminTab === 'reports' && !mappedBookings.length && allBookings.length && attempt < 3) {
+            needsRetry = true;
+          } else {
+            allBookings = mappedBookings;
+          }
+        }
         gotAnyLiveData = true;
       } else {
         console.warn('[OTS] admin ' + key + ' load failed:', result.reason && (result.reason.message || result.reason));
@@ -5298,6 +5312,28 @@ async function propagateVenueRename(oldName, newName, editedVenueId) {
   return { venues:affectedIds.length, bookings:bookingCount };
 }
 
+async function propagateVenueTypeByName(name, venueType) {
+  var key = venueNameKey(name);
+  if (!key) return 0;
+  var normalizedType = normalizeVenueType(venueType, name);
+  var count = 0;
+  venues.forEach(function(v) {
+    if (venueNameKey(v.name) === key) {
+      v.venueType = normalizedType;
+      count++;
+    }
+  });
+  try {
+    await neonSQL(
+      "UPDATE venues SET venue_type=$1 WHERE LOWER(TRIM(REGEXP_REPLACE(name,'\\s+',' ','g')))=$2",
+      [normalizedType, key]
+    );
+  } catch(e) {
+    console.warn('[OTS] venue type remote bulk update skipped:', e && (e.message || e));
+  }
+  return count;
+}
+
 // =======================================
 // APPROVAL QUEUE
 // =======================================
@@ -5401,14 +5437,16 @@ async function changeVenueType(id, value) {
   if (!requireAdminPerm('venues', 'venue editing')) return;
   var v = venues.find(function(x){ return String(x.id) === String(id); });
   if (!v) return;
-  v.venueType = normalizeVenueType(value, v.name);
+  var targetType = normalizeVenueType(value, v.name);
+  var affectedCount = await propagateVenueTypeByName(v.name, targetType);
   renderVenueManager();
   renderVenueList();
+  if (currentAdminTab === 'reports') generateMonthlyReportPreview(false);
   saveLocal();
   try {
     await saveRemoteNow(true);
-    showToast('', 'Venue Type Updated', (v.name || 'Venue') + ' is now ' + (v.venueType || 'uncategorized') + '.');
-    logAdminAction('venue_type_update', (v.name || id) + ' -> ' + (v.venueType || 'uncategorized')).catch(function(){});
+    showToast('', 'Venue Type Updated', (v.name || 'Venue') + ' is now ' + (targetType || 'uncategorized') + ' for ' + Math.max(affectedCount, 1) + ' matching venue row(s).');
+    logAdminAction('venue_type_update', (v.name || id) + ' -> ' + (targetType || 'uncategorized') + ' / ' + Math.max(affectedCount, 1) + ' rows').catch(function(){});
   } catch(e) {
     console.error('[OTS] venue type update failed:', e);
     showToast('', 'Save Failed', 'Could not update venue type. Please try again.');
@@ -5579,12 +5617,14 @@ async function saveVenue() {
       var oldVenueName = v ? v.name : '';
       if (v) Object.assign(v,{name,day,date,timeStart,timeEnd,confirmStatus,visibility,venueType,landmark,mapUrl,imageUrl});
       var renameResult = await propagateVenueRename(oldVenueName, name, editingVenueId);
-      if (typeof logAdminAction === 'function') logAdminAction('edit_venue', name + ' (' + date + ')' + (renameResult.venues > 1 ? ' - renamed ' + renameResult.venues + ' venue rows' : '')).catch(function(){});
-      showToast('','Venue Updated', renameResult.venues > 1 ? `"${oldVenueName}" renamed to "${name}" everywhere.` : `"${name}" has been updated.`);
+      var typeCount = await propagateVenueTypeByName(name, venueType);
+      if (typeof logAdminAction === 'function') logAdminAction('edit_venue', name + ' (' + date + ')' + (renameResult.venues > 1 ? ' - renamed ' + renameResult.venues + ' venue rows' : '') + ' - type rows ' + typeCount).catch(function(){});
+      showToast('','Venue Updated', `"${name}" updated. Venue type applied to ${Math.max(typeCount, 1)} matching row(s).`);
     } else {
       venues.push({id:'v-'+Date.now(),name,day,date,timeStart,timeEnd,confirmStatus,visibility,venueType,landmark,mapUrl,imageUrl,status:'open'});
+      var addTypeCount = await propagateVenueTypeByName(name, venueType);
       if (typeof logAdminAction === 'function') logAdminAction('add_venue', name + ' (' + date + ')').catch(function(){});
-      showToast('','Venue Added',`"${name}" is now live on the booking page.`);
+      showToast('','Venue Added',`"${name}" is now live. Venue type applied to ${Math.max(addTypeCount, 1)} matching row(s).`);
     }
     _venueSaving = false;
     closeVenueModal();
@@ -6564,6 +6604,12 @@ function adminCancel(id) {
 // =======================================
 const MONTHLY_REPORT_DRAFT_KEY = 'ots_monthly_report_draft_v1';
 var _monthlyReportRows = [];
+var _monthlyReportLastContextKey = '';
+
+function monthlyReportContextKey(ctx) {
+  ctx = ctx || getMonthlyReportContext();
+  return String(ctx.monthKey || '') + '|' + String(ctx.type || 'all');
+}
 
 function localMonthKey(date) {
   var d = date || new Date();
@@ -6826,23 +6872,39 @@ function renderMonthlyReportLoading(message) {
   if (preview) preview.innerHTML = '<div class="table-empty">' + otsEscapeHtml(message || 'Loading live report data...') + '</div>';
 }
 
+function showMonthlyReportRefreshingNotice(message) {
+  var warnings = document.getElementById('monthlyReportWarnings');
+  if (warnings) warnings.innerHTML = '<div class="ok">' + otsEscapeHtml(message || 'Refreshing live report data...') + '</div>';
+}
+
 function generateMonthlyReportPreview(allowRefresh) {
   var preview = document.getElementById('monthlyReportPreview');
   if (!preview) return;
   initMonthlyReportControls();
-  if (_adminDataLoading && currentAdminTab === 'reports' && !allBookings.length) {
-    renderMonthlyReportLoading('Loading live report data...');
+  var initialCtx = getMonthlyReportContext();
+  syncMonthlyReportTitle(initialCtx);
+  initialCtx = getMonthlyReportContext();
+  var contextKey = monthlyReportContextKey(initialCtx);
+  if (_adminDataLoading && currentAdminTab === 'reports') {
+    if (_monthlyReportRows.length && _monthlyReportLastContextKey === contextKey) {
+      showMonthlyReportRefreshingNotice('Refreshing live report data...');
+    } else {
+      renderMonthlyReportLoading('Loading live report data...');
+    }
     return;
   }
-  if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !allBookings.length && !_adminDataLoading) {
-    renderMonthlyReportLoading('Loading report data...');
-    refreshAdmin().then(function(){ generateMonthlyReportPreview(false); });
+  if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !_adminDataLoading) {
+    if (_monthlyReportRows.length && _monthlyReportLastContextKey === contextKey) {
+      showMonthlyReportRefreshingNotice('Refreshing live report data...');
+    } else {
+      renderMonthlyReportLoading('Loading report data...');
+    }
+    refreshAdmin().then(function(){ generateMonthlyReportPreview(false); }).catch(function(){ generateMonthlyReportPreview(false); });
     return;
   }
-  var ctx = getMonthlyReportContext();
-  syncMonthlyReportTitle(ctx);
-  ctx = getMonthlyReportContext();
+  var ctx = initialCtx;
   _monthlyReportRows = buildMonthlyReportRows(ctx);
+  _monthlyReportLastContextKey = monthlyReportContextKey(ctx);
   renderMonthlyReportSummary(ctx, _monthlyReportRows);
   if (!_monthlyReportRows.length) {
     preview.innerHTML = '<div class="table-empty">No confirmed shows found for this report.</div>';
