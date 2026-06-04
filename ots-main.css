@@ -443,6 +443,25 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 .vmg-info{flex:1;}
 .vmg-name{font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;margin-bottom:3px;}
 .vmg-cap{font-size:.72rem;color:var(--muted);}
+.vmg-type-select{
+  margin-top:.7rem;
+  width:100%;
+  max-width:190px;
+  background:rgba(255,255,255,.055);
+  color:var(--text);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:6px;
+  padding:.5rem .65rem;
+  font-family:'DM Sans',sans-serif;
+  font-size:.76rem;
+  font-weight:800;
+  letter-spacing:.04em;
+}
+.vmg-type-select:focus{
+  outline:none;
+  border-color:rgba(188,119,222,.75);
+  box-shadow:0 0 0 2px rgba(188,119,222,.16);
+}
 .vmg-price{font-size:.8rem;font-weight:600;margin-top:3px;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .vmg-actions{display:flex;gap:.5rem;margin-top:.8rem;}
 .vmg-btn{flex:1;font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.5rem;cursor:pointer;border-radius:3px;transition:all .2s;}
@@ -4905,6 +4924,18 @@ body.modal-lock textarea{
   grid-template-columns:repeat(6,minmax(110px,1fr));
   gap:.65rem;
   margin-bottom:.9rem;
+}
+.monthly-report-loading{
+  grid-column:1/-1;
+  border:1px solid rgba(112,186,244,.18);
+  background:rgba(112,186,244,.07);
+  color:var(--blue);
+  border-radius:7px;
+  padding:1rem;
+  font-size:.84rem;
+  font-weight:800;
+  letter-spacing:.05em;
+  text-transform:uppercase;
 }
 .monthly-report-stat{
   border:1px solid rgba(255,255,255,.1);

@@ -1,4 +1,4 @@
-const OTS_CACHE = "ots-booking-v8";
+const OTS_CACHE = "ots-booking-v9";
 const OTS_ASSETS = [
   "./",
   "./index.html",
@@ -10,7 +10,9 @@ const OTS_ASSETS = [
   "./ots-boot.js",
   "./ots-mobile-scroll.js",
   "./ots-brand-mark.png",
-  "./ots-login-logo.png"
+  "./ots-login-logo.png",
+  "./gcc-logo.png",
+  "./chennai-smart-city.png"
 ];
 
 self.addEventListener("install", event => {

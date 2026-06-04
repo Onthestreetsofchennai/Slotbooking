@@ -697,7 +697,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
         <strong> Expected CSV Format</strong>
         Columns (in order): <code>Day</code>, <code>Date</code>, <code>Show Slot</code>, <code>Event/Campaign</code>, <code>Venue</code>, optional <code>Venue Type</code><br>
         Date: <code>1-Jan-2026</code> or <code>01/01/2026</code> &nbsp;-&nbsp; Slot: <code>6:30 - 7:30 PM</code> or <code>6:00 to 8:00 PM</code><br>
-        Example: <code>Thursday, 1-Jan-2026, 6:30 - 7:30 PM, GCC, Rotticious, GCC Venue</code>
+        Venue Type options: <code>GCC</code>, <code>Metro</code>, <code>Foundation</code>, <code>Private</code>. Example: <code>Thursday, 1-Jan-2026, 6:30 - 7:30 PM, GCC, Rotticious, GCC</code>
       </div>
 
       <div class="csv-import-zone perm-venues-edit" id="csvDropZone">
@@ -996,9 +996,10 @@ window.OTS_ADMIN_ENTRY = './admin.html';
             <span>Report Type</span>
             <select class="form-input" id="monthlyReportType" onchange="generateMonthlyReportPreview(true)">
               <option value="all">All Shows</option>
-              <option value="gcc">GCC Venue</option>
-              <option value="foundation">Foundation Venue</option>
-              <option value="partner">Partner Venue</option>
+              <option value="gcc">GCC</option>
+              <option value="metro">Metro</option>
+              <option value="foundation">Foundation</option>
+              <option value="private">Private</option>
             </select>
           </label>
           <label>
@@ -1242,10 +1243,11 @@ window.OTS_ADMIN_ENTRY = './admin.html';
     </div>
     <div class="form-group"><label class="form-label">Venue Type</label>
       <select class="form-input" id="vm-venue-type">
-        <option value="">Normal Venue</option>
-        <option value="GCC Venue">GCC Venue</option>
-        <option value="Foundation Venue">Foundation Venue</option>
-        <option value="Partner Venue">Partner Venue</option>
+        <option value="">Select venue type</option>
+        <option value="GCC">GCC</option>
+        <option value="Metro">Metro</option>
+        <option value="Foundation">Foundation</option>
+        <option value="Private">Private</option>
       </select>
     </div>
     <div class="form-group"><label class="form-label">Specific Location / Landmark <span style="color:var(--muted);font-weight:400;">(optional)</span></label><input type="text" class="form-input" id="vm-landmark" placeholder="e.g. Near Gandhi Statue, Marina Beach"></div>

@@ -712,10 +712,16 @@ function normalizeTitleCase(value, fallback) {
 function normalizeVenueType(value, venueName) {
   var raw = String(value || '').trim();
   var hay = (raw + ' ' + String(venueName || '')).toLowerCase();
-  if (/\bgcc\b/.test(hay) || hay.indexOf('greater chennai') > -1) return 'GCC Venue';
-  if (hay.indexOf('foundation') > -1) return 'Foundation Venue';
+  if (/\bgcc\b/.test(hay) || hay.indexOf('greater chennai') > -1 || hay.indexOf('corporation') > -1) return 'GCC Venue';
+  if (hay.indexOf('metro') > -1) return 'Metro';
+  if (hay.indexOf('foundation') > -1) return 'Foundation';
+  if (hay.indexOf('private') > -1) return 'Private';
   if (hay.indexOf('partner') > -1) return 'Partner Venue';
-  if (/^(gcc venue|foundation venue|partner venue)$/i.test(raw)) return normalizeTitleCase(raw, '');
+  if (/^(gcc|gcc venue)$/i.test(raw)) return 'GCC Venue';
+  if (/^(metro|metro venue)$/i.test(raw)) return 'Metro';
+  if (/^(foundation|foundation venue)$/i.test(raw)) return 'Foundation';
+  if (/^(private|private venue)$/i.test(raw)) return 'Private';
+  if (/^(partner|partner venue)$/i.test(raw)) return 'Partner Venue';
   return '';
 }
 function normalizeVenueNameForDuplicate(value) {
@@ -750,7 +756,11 @@ function findDuplicateVenue(candidate, excludeId) {
 function venueTypeBadgeHtml(v) {
   var type = normalizeVenueType(v && v.venueType, v && v.name);
   if (!type) return '';
-  var color = type === 'GCC Venue' ? 'var(--green)' : type === 'Foundation Venue' ? 'var(--blue)' : 'var(--purple)';
+  var color = type === 'GCC Venue' ? 'var(--green)'
+    : type === 'Metro' ? 'var(--blue)'
+    : type === 'Foundation' ? 'var(--purple)'
+    : type === 'Private' ? 'var(--orange)'
+    : 'var(--muted)';
   return `<span class="vrc-badge" style="border-color:${color};color:${color};background:rgba(255,255,255,.04);">${otsEscapeHtml(type)}</span>`;
 }
 function isVenueOpen(v) {
@@ -5362,6 +5372,49 @@ async function rejectBooking(id) {
 // =======================================
 // VENUE MANAGER (ADMIN)
 // =======================================
+function venueTypeOptionsHtml(current) {
+  var cur = normalizeVenueType(current, '');
+  var options = [
+    { value:'', label:'Set type' },
+    { value:'GCC', label:'GCC' },
+    { value:'Metro', label:'Metro' },
+    { value:'Foundation', label:'Foundation' },
+    { value:'Private', label:'Private' }
+  ];
+  return options.map(function(opt) {
+    var normalized = normalizeVenueType(opt.value, '');
+    var selected = (cur === normalized || (!cur && !opt.value)) ? ' selected' : '';
+    return '<option value="' + otsEscapeHtml(opt.value) + '"' + selected + '>' + otsEscapeHtml(opt.label) + '</option>';
+  }).join('');
+}
+
+function venueTypeInputValue(value) {
+  var type = normalizeVenueType(value, '');
+  if (type === 'GCC Venue') return 'GCC';
+  if (type === 'Metro') return 'Metro';
+  if (type === 'Foundation') return 'Foundation';
+  if (type === 'Private') return 'Private';
+  return '';
+}
+
+async function changeVenueType(id, value) {
+  if (!requireAdminPerm('venues', 'venue editing')) return;
+  var v = venues.find(function(x){ return String(x.id) === String(id); });
+  if (!v) return;
+  v.venueType = normalizeVenueType(value, v.name);
+  renderVenueManager();
+  renderVenueList();
+  saveLocal();
+  try {
+    await saveRemoteNow(true);
+    showToast('', 'Venue Type Updated', (v.name || 'Venue') + ' is now ' + (v.venueType || 'uncategorized') + '.');
+    logAdminAction('venue_type_update', (v.name || id) + ' -> ' + (v.venueType || 'uncategorized')).catch(function(){});
+  } catch(e) {
+    console.error('[OTS] venue type update failed:', e);
+    showToast('', 'Save Failed', 'Could not update venue type. Please try again.');
+  }
+}
+
 function renderVenueManager() {
   const grid = document.getElementById('venueMgmtGrid');
   const canEditVenues = hasAdminPerm('venues');
@@ -5390,6 +5443,7 @@ function renderVenueManager() {
           <div class="vmg-cap" style="margin-top:2px;"> ${formatVenueTimeRange(v)}</div>
           ${v.landmark ? `<div class="vmg-cap" style="margin-top:2px;color:var(--blue);"> ${otsEscapeHtml(v.landmark)}</div>` : ''}
           ${badgeRow}
+          ${canEditVenues ? `<select class="vmg-type-select" onchange="changeVenueType('${otsJsString(v.id)}', this.value)" aria-label="Venue type">${venueTypeOptionsHtml(v.venueType)}</select>` : ''}
         </div>
       </div>
       <div class="vmg-actions" ${canEditVenues ? '' : 'style="display:none;"'}>
@@ -5443,7 +5497,7 @@ function openVenueModal(id) {
   document.getElementById('vm-date').value        = v?.date||'';
   document.getElementById('vm-time-start').value  = v?.timeStart||'';
   document.getElementById('vm-time-end').value    = v?.timeEnd||'';
-  document.getElementById('vm-venue-type').value  = normalizeVenueType(v?.venueType, v?.name);
+  document.getElementById('vm-venue-type').value  = venueTypeInputValue(v?.venueType);
   document.getElementById('vm-landmark').value    = v?.landmark||'';
   document.getElementById('vm-map-url').value     = v?.mapUrl||'';
   document.getElementById('vm-image-url').value   = v?.imageUrl||'';
@@ -5623,7 +5677,7 @@ function parseAndPreviewCSV(text) {
     const day      = cols[0] || '';
     const dateRaw  = cols[1] || '';
     const slotRaw  = cols[2] || '';
-    // cols[3] = Event/Campaign - skipped
+    const campaignRaw = cols[3] || '';
     const name     = (cols[4] || '').trim();
     const venueTypeRaw = (cols[5] || '').trim();
     const confirmRaw = (cols[6] || '').trim();
@@ -5688,7 +5742,7 @@ function parseAndPreviewCSV(text) {
     else if (seenImportKeys.has(rowKey)) { rowStatus='dup'; }
     else seenImportKeys.add(rowKey);
 
-    const venueType = normalizeVenueType(venueTypeRaw, name);
+    const venueType = normalizeVenueType(venueTypeRaw || campaignRaw, name);
     csvParsedRows.push({ day:day.trim(), date:isoDate, rawDate:dateRaw, timeStart, timeEnd, slotRaw, name, venueType, confirmStatus, visibility:'Public', rowStatus, errMsg });
   });
 
@@ -6547,8 +6601,9 @@ function monthlyReportDraftField(monthKey, type, bookingId, field) {
 function monthlyReportDefaultTitle(monthKey, type) {
   var prefix = 'OTS';
   if (type === 'gcc') prefix = 'GCC';
+  if (type === 'metro') prefix = 'METRO';
   if (type === 'foundation') prefix = 'FOUNDATION';
-  if (type === 'partner') prefix = 'PARTNER';
+  if (type === 'private') prefix = 'PRIVATE';
   return prefix + ' REPORT ' + String(monthLabelFromKey(monthKey, true)).toUpperCase();
 }
 
@@ -6565,7 +6620,7 @@ function getMonthlyReportContext() {
     monthKey: monthKey,
     type: type,
     title: title,
-    typeLabel: type === 'gcc' ? 'GCC Venue' : type === 'foundation' ? 'Foundation Venue' : type === 'partner' ? 'Partner Venue' : 'All Shows'
+    typeLabel: type === 'gcc' ? 'GCC' : type === 'metro' ? 'Metro' : type === 'foundation' ? 'Foundation' : type === 'private' ? 'Private' : 'All Shows'
   };
 }
 
@@ -6601,7 +6656,7 @@ function syncMonthlyReportTitle(ctx) {
     return;
   }
   var current = titleEl.value.trim();
-  var looksAuto = /^(OTS|GCC|FOUNDATION|PARTNER) REPORT [A-Z]{3} \d{4}$/i.test(current);
+  var looksAuto = /^(OTS|GCC|METRO|FOUNDATION|PRIVATE|PARTNER) REPORT [A-Z]{3} \d{4}$/i.test(current);
   if (!current || looksAuto) titleEl.value = monthlyReportDefaultTitle(ctx.monthKey, ctx.type);
 }
 
@@ -6614,14 +6669,20 @@ function monthlyReportFootfallFor(row, ctx) {
 }
 
 function monthlyReportVenueType(venue, booking) {
-  return normalizeVenueType((venue && venue.venueType) || '', (venue && venue.name) || (booking && booking.venue) || '');
+  var explicit = normalizeVenueType((venue && venue.venueType) || '', (venue && venue.name) || (booking && booking.venue) || '');
+  if (explicit) return explicit;
+  var visibility = String((venue && venue.visibility) || (booking && booking.visibility) || '').trim().toLowerCase();
+  if (visibility === 'private') return 'Private';
+  return '';
 }
 
 function monthlyReportScopeMatches(venue, booking, type) {
   if (type === 'all') return true;
   var vt = monthlyReportVenueType(venue, booking).toLowerCase();
   if (type === 'gcc') return vt === 'gcc venue';
-  if (type === 'foundation') return vt === 'foundation venue';
+  if (type === 'metro') return vt === 'metro';
+  if (type === 'foundation') return vt === 'foundation';
+  if (type === 'private') return vt === 'private';
   if (type === 'partner') return vt === 'partner venue';
   return true;
 }
@@ -6706,6 +6767,18 @@ function computeMonthlyReportSummary(rows) {
   };
 }
 
+function countMonthlyReportHiddenUncategorized(ctx) {
+  if (!ctx || ctx.type === 'all') return 0;
+  return (allBookings || []).filter(function(b) {
+    var date = normalizeVenueDate(b && b.date);
+    if (!date || date.slice(0, 7) !== ctx.monthKey) return false;
+    var status = normalizeStatus(b && b.status, '');
+    if (['confirmed','approved','completed'].indexOf(status) === -1) return false;
+    var venue = findVenueForBooking(b);
+    return !monthlyReportVenueType(venue, b) && !monthlyReportScopeMatches(venue, b, ctx.type);
+  }).length;
+}
+
 function renderMonthlyReportSummary(ctx, rows) {
   var el = document.getElementById('monthlyReportSummary');
   if (!el) return;
@@ -6723,6 +6796,8 @@ function renderMonthlyReportSummary(ctx, rows) {
     var notes = [];
     if (s.missingFootfall) notes.push(s.missingFootfall + ' show(s) need footfall before the report looks complete.');
     if (s.missingPhotos) notes.push(s.missingPhotos + ' show(s) do not have proof photos yet.');
+    var hiddenUncategorized = countMonthlyReportHiddenUncategorized(ctx);
+    if (hiddenUncategorized) notes.push(hiddenUncategorized + ' old show(s) are hidden because their venue type is not set. Public is only visibility; set GCC/Metro/Foundation/Private in Venue Manager.');
     if (!rows.length) notes.push('No confirmed shows found for ' + otsEscapeHtml(ctx.typeLabel) + ' in ' + otsEscapeHtml(monthLabelFromKey(ctx.monthKey, false)) + '.');
     warn.innerHTML = notes.length ? notes.map(function(n){ return '<div>' + otsEscapeHtml(n) + '</div>'; }).join('') : '<div class="ok">Report data looks complete.</div>';
   }
@@ -6742,12 +6817,25 @@ function setMonthlyReportFootfall(bookingId, value) {
   renderMonthlyReportSummary(ctx, _monthlyReportRows);
 }
 
+function renderMonthlyReportLoading(message) {
+  var summary = document.getElementById('monthlyReportSummary');
+  var warnings = document.getElementById('monthlyReportWarnings');
+  var preview = document.getElementById('monthlyReportPreview');
+  if (summary) summary.innerHTML = '<div class="monthly-report-loading">' + otsEscapeHtml(message || 'Loading live report data...') + '</div>';
+  if (warnings) warnings.innerHTML = '';
+  if (preview) preview.innerHTML = '<div class="table-empty">' + otsEscapeHtml(message || 'Loading live report data...') + '</div>';
+}
+
 function generateMonthlyReportPreview(allowRefresh) {
   var preview = document.getElementById('monthlyReportPreview');
   if (!preview) return;
   initMonthlyReportControls();
+  if (_adminDataLoading && currentAdminTab === 'reports' && !allBookings.length) {
+    renderMonthlyReportLoading('Loading live report data...');
+    return;
+  }
   if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !allBookings.length && !_adminDataLoading) {
-    preview.innerHTML = '<div class="table-empty">Loading report data...</div>';
+    renderMonthlyReportLoading('Loading report data...');
     refreshAdmin().then(function(){ generateMonthlyReportPreview(false); });
     return;
   }
