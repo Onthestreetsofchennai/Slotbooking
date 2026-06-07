@@ -73,6 +73,10 @@ function otsIsAdminApp() { return otsAppMode() === 'admin'; }
 function otsIsMemberApp() { return otsAppMode() !== 'admin'; }
 function otsAdminEntry() { return window.OTS_ADMIN_ENTRY || './admin.html'; }
 function otsMemberEntry() { return window.OTS_MEMBER_ENTRY || './index.html'; }
+function otsPublicPageFromHash() {
+  var page = String((window.location.hash || '').replace(/^#/, '') || '').trim().toLowerCase();
+  return ['home','venues','form','myrequests','leaderboard','profile','chat'].indexOf(page) > -1 ? page : '';
+}
 function openAdminEntry(hash) {
   var target = otsAdminEntry() + (hash || '#admin');
   if (otsIsAdminApp()) {
@@ -80,6 +84,26 @@ function openAdminEntry(hash) {
     return;
   }
   window.location.href = target;
+}
+function openMemberEntry(hash) {
+  var cleanHash = hash || '#home';
+  var target = otsMemberEntry() + cleanHash;
+  var page = String(cleanHash || '').replace(/^#/, '') || 'home';
+  try { localStorage.setItem('ots_current_page', page); } catch(e) {}
+  if (otsIsMemberApp()) {
+    if (cleanHash) window.location.hash = cleanHash;
+    if (typeof showPage === 'function') showPage(page);
+    return;
+  }
+  window.location.href = target;
+}
+function openPublicPage(page) {
+  page = page || 'home';
+  if (otsIsAdminApp()) {
+    openMemberEntry('#' + page);
+    return;
+  }
+  showPage(page);
 }
 
 // -- Neon DB: No realtime WebSocket - using polling for cross-device sync --
@@ -753,6 +777,63 @@ function findDuplicateVenue(candidate, excludeId) {
     return String(v.id || '') !== String(excludeId || '') && venueDuplicateKey(v) === key;
   }) || null;
 }
+function venueHasUsefulValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== '';
+}
+function mergeDuplicateVenueIntoKeeper(keeper, duplicate) {
+  if (!keeper || !duplicate) return;
+  ['venueType','landmark','mapUrl','imageUrl','confirmStatus','visibility','day'].forEach(function(field) {
+    if (!venueHasUsefulValue(keeper[field]) && venueHasUsefulValue(duplicate[field])) keeper[field] = duplicate[field];
+  });
+  if (normalizeStatus(duplicate.status, '') === 'open') keeper.status = 'open';
+}
+function getDuplicateVenuePlan() {
+  var byKey = {};
+  var display = [];
+  var removedIds = [];
+  var replacementMap = {};
+  var groups = [];
+  (venues || []).forEach(function(v) {
+    var key = venueDuplicateKey(v);
+    if (!key) {
+      display.push(v);
+      return;
+    }
+    if (!byKey[key]) {
+      byKey[key] = { keeper:v, duplicates:[] };
+      display.push(v);
+      return;
+    }
+    var group = byKey[key];
+    mergeDuplicateVenueIntoKeeper(group.keeper, v);
+    group.duplicates.push(v);
+    removedIds.push(v.id);
+    replacementMap[v.id] = group.keeper.id;
+  });
+  Object.keys(byKey).forEach(function(key) {
+    if (byKey[key].duplicates.length) groups.push(byKey[key]);
+  });
+  return { display:display, removedIds:removedIds, replacementMap:replacementMap, groups:groups, count:removedIds.length };
+}
+function applyDuplicateVenuePlan(plan) {
+  plan = plan || getDuplicateVenuePlan();
+  if (!plan.count) return plan;
+  var removed = {};
+  plan.removedIds.forEach(function(id){ removed[String(id)] = true; });
+  venues = (venues || []).filter(function(v){ return !removed[String(v.id)]; });
+  function remapBookingVenue(b) {
+    if (!b) return;
+    var newId = plan.replacementMap[b.venueId];
+    if (newId) {
+      b.venueId = newId;
+      var kept = venues.find(function(v){ return String(v.id) === String(newId); });
+      if (kept && kept.name) b.venue = kept.name;
+    }
+  }
+  allBookings.forEach(remapBookingVenue);
+  myBookings.forEach(remapBookingVenue);
+  return plan;
+}
 function venueTypeBadgeHtml(v) {
   var type = normalizeVenueType(v && v.venueType, v && v.name);
   if (!type) return '';
@@ -908,6 +989,9 @@ const LIGHT_PROOF_SQL = "CASE WHEN LENGTH(COALESCE(proof_url,'')) > 0 THEN '__up
 function isProofPlaceholder(url) {
   return String(url || '') === '__uploaded__';
 }
+function bookingHasProofRecord(b) {
+  return !!(b && (b.proofUrl || b.proofClaimed));
+}
 async function fetchBookingProofUrl(bookingId) {
   var rows = await neonSQL('SELECT proof_url FROM bookings WHERE id=$1 LIMIT 1', [bookingId]);
   return rows && rows[0] ? (rows[0].proof_url || '') : '';
@@ -965,20 +1049,21 @@ function liveCoreBookingsQuery() {
   }
   var myPhone = _normPhone(memberPhone || '');
   var myEmail = (memberEmail || '').trim().toLowerCase();
+  var today = todayIsoLocal();
   if (memberLoggedIn && (myPhone || myEmail)) {
     return {
       sql: 'SELECT ' + cols + ' FROM bookings ' +
-        'WHERE status=$1 ' +
-        '   OR RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10) = $2 ' +
-        '   OR LOWER(TRIM(email)) = $3 ' +
-        '   OR performers LIKE $4 ' +
+        'WHERE (LOWER(COALESCE(status,\'\')) IN ($1,$2) AND LEFT(date::TEXT,10) >= $3) ' +
+        '   OR RIGHT(REGEXP_REPLACE(phone,\'[^0-9]\',\'\',\'g\'),10) = $4 ' +
+        '   OR LOWER(TRIM(email)) = $5 ' +
+        '   OR performers LIKE $6 ' +
         'ORDER BY date ASC, created_at DESC LIMIT 300',
-      params: ['confirmed', myPhone || '', myEmail || '', '%' + (myPhone || '__NO_PHONE__') + '%']
+      params: ['confirmed', 'pending', today, myPhone || '', myEmail || '', '%' + (myPhone || '__NO_PHONE__') + '%']
     };
   }
   return {
-    sql: 'SELECT ' + cols + ' FROM bookings WHERE status=$1 ORDER BY date ASC, created_at DESC LIMIT 180',
-    params: ['confirmed']
+    sql: 'SELECT ' + cols + ' FROM bookings WHERE LOWER(COALESCE(status,\'\')) IN ($1,$2) AND LEFT(date::TEXT,10) >= $3 ORDER BY date ASC, created_at DESC LIMIT 300',
+    params: ['confirmed', 'pending', today]
   };
 }
 
@@ -1351,6 +1436,40 @@ function getBookedVenueDates() {
     .filter(function(b){ return b && b.status === 'confirmed' && normalizeVenueDate(b.date); })
     .map(function(b){ return normalizeVenueDate(b.date); }));
 }
+function isSlotBlockingBooking(b) {
+  return ['pending','confirmed','approved','completed'].indexOf(normalizeStatus(b && b.status, '')) > -1;
+}
+function isBookingForVenueSlot(b, v) {
+  if (!b || !v) return false;
+  if (b.venueId && v.id && String(b.venueId) === String(v.id)) return true;
+  var bookingDate = normalizeVenueDate(b.date);
+  var venueDate = normalizeVenueDate(v.date);
+  if (!bookingDate || !venueDate || bookingDate !== venueDate) return false;
+  return normalizeVenueNameForDuplicate(b.venue) === normalizeVenueNameForDuplicate(v.name);
+}
+function getVenueSlotBlockingBooking(v, statusName) {
+  return (allBookings || []).find(function(b) {
+    if (!isSlotBlockingBooking(b) || !isBookingForVenueSlot(b, v)) return false;
+    return statusName ? normalizeStatus(b.status, '') === statusName : true;
+  }) || null;
+}
+function showVenueSlotBlockedNotice(v, bookingLike) {
+  var status = normalizeStatus(bookingLike && bookingLike.status, '');
+  if (status === 'pending') {
+    showToast('', 'Slot Pending', (v && v.name ? v.name + ' ' : '') + 'is already pending admin approval.');
+  } else {
+    showToast('', 'Slot Booked', (v && v.name ? v.name + ' ' : '') + 'is already booked.');
+  }
+}
+async function fetchLiveVenueSlotBlockingBooking(v) {
+  if (!v) return null;
+  var venueDate = normalizeVenueDate(v.date);
+  var rows = await neonSQL(
+    "SELECT id,status FROM bookings WHERE LOWER(COALESCE(status,'')) IN ('pending','confirmed','approved','completed') AND (venue_id=$1 OR (LEFT(date::TEXT,10)=$2 AND LOWER(TRIM(venue))=LOWER(TRIM($3)))) ORDER BY created_at DESC LIMIT 1",
+    [String(v.id || ''), venueDate, String(v.name || '')]
+  );
+  return rows && rows[0] ? rows[0] : null;
+}
 function getOpenVenueDatesSorted() {
   return Array.from(getVenueDates()).sort();
 }
@@ -1570,8 +1689,10 @@ function renderVenueList() {
       const monthName = MONTHS[mo - 1];
 
       const venueCards = dayVenues.map(v => {
-        const hasPending   = allBookings.some(b => b.venueId === v.id && b.status === 'pending');
-        const hasConfirmed = allBookings.some(b => b.venueId === v.id && b.status === 'confirmed');
+        const pendingBooking = getVenueSlotBlockingBooking(v, 'pending');
+        const confirmedBooking = getVenueSlotBlockingBooking(v, 'confirmed') || getVenueSlotBlockingBooking(v, 'approved') || getVenueSlotBlockingBooking(v, 'completed');
+        const hasPending   = !!pendingBooking;
+        const hasConfirmed = !!confirmedBooking;
         const isPastMonthVenue = isPastMonthGroup || isVenueBeforeToday(v);
         const blocked    = isPastMonthVenue || hasPending || hasConfirmed;
         const cardClass  = [
@@ -1580,7 +1701,9 @@ function renderVenueList() {
         ].filter(Boolean).join(' ');
         const landmarkHtml = v.landmark ? `<div class="vrc-meta" style="color:var(--blue);"> ${otsEscapeHtml(v.landmark)}</div>` : '';
         const venueTypeBadge = venueTypeBadgeHtml(v);
-        const statusBadge = (hasConfirmed || venueTypeBadge) ? `<div class="vrc-badges">${hasConfirmed ? '<span class="vrc-badge vrc-booked">Booked</span>' : ''}${venueTypeBadge}</div>` : '';
+        const pendingBadge = hasPending ? '<span class="vrc-badge vrc-pending">Pending</span>' : '';
+        const bookedBadge = hasConfirmed ? '<span class="vrc-badge vrc-booked">Booked</span>' : '';
+        const statusBadge = (bookedBadge || pendingBadge || venueTypeBadge) ? `<div class="vrc-badges">${bookedBadge}${pendingBadge}${venueTypeBadge}</div>` : '';
         const actionBtn = isPastMonthVenue
           ? `<span style="font-size:.72rem;color:var(--muted);font-style:italic;">Booking closed</span>`
           : hasConfirmed
@@ -1652,6 +1775,16 @@ function pickVenue(id) {
   }
   if (isVenueBeforeToday(v)) {
     showToast('', 'Booking Closed', 'This venue date is over and is shown only for reference.');
+    selectedVenueId = null;
+    try { localStorage.removeItem('ots_selected_venue'); } catch(e){}
+    renderVenueList();
+    updateSummary();
+    validateForm();
+    return;
+  }
+  var blockingBooking = getVenueSlotBlockingBooking(v);
+  if (blockingBooking) {
+    showVenueSlotBlockedNotice(v, blockingBooking);
     selectedVenueId = null;
     try { localStorage.removeItem('ots_selected_venue'); } catch(e){}
     renderVenueList();
@@ -3566,10 +3699,13 @@ async function init() {
     document.getElementById('memberLoginPage').classList.add('hidden');
     // Restore where they were or go to venues
     try {
+      const hashPage = otsPublicPageFromHash();
       const savedPage = localStorage.getItem('ots_current_page');
       const savedVenueId = localStorage.getItem('ots_selected_venue');
       if (savedVenueId) selectedVenueId = savedVenueId;
-      if (savedPage && ['home','venues','form','myrequests','leaderboard','profile','chat'].includes(savedPage)) {
+      if (hashPage) {
+        showPage(hashPage);
+      } else if (savedPage && ['home','venues','form','myrequests','leaderboard','profile','chat'].includes(savedPage)) {
         showPage(savedPage);
       } else {
         showPage('home');
@@ -3675,7 +3811,8 @@ function validateForm() {
   const phone = document.getElementById('inp-phone').value.trim();
   const type  = document.getElementById('inp-type').value;
   const venue = venues.find(v=>v.id===selectedVenueId);
-  const ok = selectedVenueId && venue && !isVenueBeforeToday(venue) && band && booker && isValidPhone(phone) && type;
+  const blockedSlot = venue ? getVenueSlotBlockingBooking(venue) : null;
+  const ok = selectedVenueId && venue && !isVenueBeforeToday(venue) && !blockedSlot && band && booker && isValidPhone(phone) && type;
   document.getElementById('bookBtn').disabled = !ok;
 }
 ['inp-booker','inp-band','inp-type'].forEach(id=>
@@ -3699,6 +3836,36 @@ async function submitBooking() {
     updateSummary();
     validateForm();
     showPage('venues');
+    return;
+  }
+  var cachedBlockingBooking = getVenueSlotBlockingBooking(venue);
+  if (cachedBlockingBooking) {
+    showVenueSlotBlockedNotice(venue, cachedBlockingBooking);
+    selectedVenueId = null;
+    try { localStorage.removeItem('ots_selected_venue'); } catch(e){}
+    renderVenueList();
+    updateSummary();
+    validateForm();
+    showPage('venues');
+    return;
+  }
+  try {
+    var liveBlockingBooking = await fetchLiveVenueSlotBlockingBooking(venue);
+    if (liveBlockingBooking) {
+      showVenueSlotBlockedNotice(venue, liveBlockingBooking);
+      selectedVenueId = null;
+      try { localStorage.removeItem('ots_selected_venue'); } catch(e){}
+      await refreshLiveCoreData({ maxAgeMs: 0, showLoading: false, silentIfCached: true }).catch(function(){});
+      renderVenueList();
+      updateSummary();
+      validateForm();
+      showPage('venues');
+      return;
+    }
+  } catch(e) {
+    console.warn('[OTS] slot availability check failed:', e && (e.message || e));
+    showToast('', 'Please Try Again', 'Could not confirm the latest slot status. Check once and submit again.');
+    validateForm();
     return;
   }
   const formEmail = (document.getElementById('inp-email') ? document.getElementById('inp-email').value.trim() : '');
@@ -4421,6 +4588,7 @@ function refreshAdmin(attempt) {
   setAdminLoadingState(true, attempt ? 'Retrying live admin data...' : 'Loading live admin data...');
   var tab = currentAdminTab || 'venues';
   if (tab === 'approvals') tab = 'venues';
+  var reportMonthKey = tab === 'reports' ? getMonthlyReportMonthKeyForLoad() : '';
   var loadVenues = ['venues','import','bookings','reports','superadmin'].indexOf(tab) > -1;
   var loadBookings = ['venues','bookings','claims','points','reports','superadmin'].indexOf(tab) > -1;
   if (tab === 'members') loadMembers().catch(function(){});
@@ -4428,7 +4596,18 @@ function refreshAdmin(attempt) {
 
   var tasks = [];
   if (loadVenues) tasks.push({ key:'venues', promise:neonSQL('SELECT id,name,day,date,time_start,time_end,confirm_status,visibility,status,venue_type,landmark,map_url,image_url FROM venues ORDER BY date ASC, time_start ASC') });
-  if (loadBookings) tasks.push({ key:'bookings', promise:neonSQL('SELECT id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,' + LIGHT_PROOF_SQL + ',proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url,performers FROM bookings ORDER BY created_at DESC LIMIT 1000') });
+  if (loadBookings) {
+    var bookingCols = 'id,venue_id,venue,date,type,name,booked_by,phone,email,notes,visibility,status,created_at,' + LIGHT_PROOF_SQL + ',proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url,performers';
+    if (tab === 'reports' && reportMonthKey) {
+      tasks.push({
+        key:'reportBookings',
+        monthKey:reportMonthKey,
+        promise:neonSQL('SELECT ' + bookingCols + ' FROM bookings WHERE LEFT(date::TEXT, 7)=$1 ORDER BY date ASC, created_at DESC LIMIT 5000', [reportMonthKey])
+      });
+    } else {
+      tasks.push({ key:'bookings', promise:neonSQL('SELECT ' + bookingCols + ' FROM bookings ORDER BY created_at DESC LIMIT 1000') });
+    }
+  }
   if (!tasks.length) {
     setAdminLoadingState(false);
     _refreshAdminUI();
@@ -4440,7 +4619,8 @@ function refreshAdmin(attempt) {
     var gotAnyLiveData = false;
     var needsRetry = false;
     results.forEach(function(result, i) {
-      var key = tasks[i].key;
+      var task = tasks[i];
+      var key = task.key;
       if (result.status === 'fulfilled') {
         if (key === 'venues') {
           var mappedVenues = mapVenueRows(result.value || []);
@@ -4458,10 +4638,20 @@ function refreshAdmin(attempt) {
             allBookings = mappedBookings;
           }
         }
+        if (key === 'reportBookings') {
+          var mappedReportBookings = mapBookingRows(result.value || []);
+          if (!mappedReportBookings.length && attempt < 2) {
+            needsRetry = true;
+          } else {
+            mergeMonthlyReportBookings(mappedReportBookings, task.monthKey);
+            _monthlyReportLoadedMonthKey = task.monthKey || '';
+          }
+        }
         gotAnyLiveData = true;
       } else {
         console.warn('[OTS] admin ' + key + ' load failed:', result.reason && (result.reason.message || result.reason));
         if ((key === 'venues' && !venues.length) || (key === 'bookings' && !allBookings.length)) needsRetry = true;
+        if (key === 'reportBookings') needsRetry = true;
       }
     });
     if (gotAnyLiveData) {
@@ -4471,6 +4661,9 @@ function refreshAdmin(attempt) {
         _refreshAdminUI();
         _adminRetryTimer = setTimeout(function(){ refreshAdmin(attempt + 1); }, 1200 + (attempt * 1200));
       } else {
+        if (currentAdminTab === 'reports' && needsRetry && reportMonthKey) {
+          _monthlyReportLoadFailedMonthKey = reportMonthKey;
+        }
         setAdminLoadingState(false);
         _refreshAdminUI();
         showSyncStatus(' Admin data updated','var(--green)');
@@ -4484,6 +4677,9 @@ function refreshAdmin(attempt) {
     if (attempt < 3) {
       _adminRetryTimer = setTimeout(function(){ refreshAdmin(attempt + 1); }, 1200 + (attempt * 1200));
     } else {
+      if (currentAdminTab === 'reports' && reportMonthKey) {
+        _monthlyReportLoadFailedMonthKey = reportMonthKey;
+      }
       setAdminLoadingState(false);
       _refreshAdminUI();
       showSyncStatus(' Could not refresh admin data','var(--orange)');
@@ -4532,6 +4728,7 @@ function switchAdminTab(tab) {
     if (tbtn) tbtn.classList.toggle('active', t===tab);
     if (pane) pane.style.display = t===tab ? 'block' : 'none';
   });
+  syncAdminUploadInputsForTab(tab);
   if (tab==='venues')      renderVenueManager();
   if (tab==='bookings')    filterTable();
   if (tab==='claims')      loadAdminClaims();
@@ -4549,6 +4746,22 @@ function switchAdminTab(tab) {
   if (tab==='superadmin')  loadSuperAdminData();
   _applySuperAdminVisibility();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function syncAdminUploadInputsForTab(tab) {
+  var uploadInputs = {
+    csvFileInput: tab === 'import',
+    photoFileInput: tab === 'photos',
+    communityAdImageInput: tab === 'ads',
+    memberCsvInput: tab === 'members',
+    'zone-csv-file': tab === 'points'
+  };
+  Object.keys(uploadInputs).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = !uploadInputs[id];
+    el.style.pointerEvents = uploadInputs[id] ? '' : 'none';
+  });
 }
 
 // ========================================
@@ -5265,7 +5478,7 @@ function getVenueTime(venueId) {
   return v ? `${v.day||''} ${formatDateShort(v.date)} - ${formatVenueTimeRange(v)}` : '-';
 }
 function venueNameKey(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalizeVenueNameForDuplicate(value);
 }
 function getLiveVenueName(booking) {
   var v = booking && booking.venueId ? venues.find(function(x){ return x.id === booking.venueId; }) : null;
@@ -5297,13 +5510,16 @@ async function propagateVenueRename(oldName, newName, editedVenueId) {
   myBookings.forEach(updateBookingName);
 
   try {
-    await neonSQL("UPDATE venues SET name=$1 WHERE LOWER(TRIM(REGEXP_REPLACE(name,'\\s+',' ','g')))=$2", [newClean, oldKey]);
+    await neonSQL(
+      "UPDATE venues SET name=$1 WHERE LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(name,'&',' and ','g'),'[^a-zA-Z0-9]+',' ','g')))=$2",
+      [newClean, oldKey]
+    );
   } catch(e) {
     console.warn('[OTS] venue rename remote venue update skipped:', e && (e.message || e));
   }
   try {
     await neonSQL(
-      "UPDATE bookings SET venue=$1 WHERE LOWER(TRIM(REGEXP_REPLACE(venue,'\\s+',' ','g')))=$2 OR venue_id = ANY($3::text[])",
+      "UPDATE bookings SET venue=$1 WHERE LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(venue,'&',' and ','g'),'[^a-zA-Z0-9]+',' ','g')))=$2 OR venue_id = ANY($3::text[])",
       [newClean, oldKey, affectedIds]
     );
   } catch(e) {
@@ -5325,7 +5541,7 @@ async function propagateVenueTypeByName(name, venueType) {
   });
   try {
     await neonSQL(
-      "UPDATE venues SET venue_type=$1 WHERE LOWER(TRIM(REGEXP_REPLACE(name,'\\s+',' ','g')))=$2",
+      "UPDATE venues SET venue_type=$1 WHERE LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(name,'&',' and ','g'),'[^a-zA-Z0-9]+',' ','g')))=$2",
       [normalizedType, key]
     );
   } catch(e) {
@@ -5461,8 +5677,22 @@ function renderVenueManager() {
     return;
   }
   if (!venues.length) { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--muted);">No venues yet. Add one above.</div>'; return; }
-  grid.innerHTML = venues.map(v=>{
-    const isBooked = allBookings.some(b => b.venueId === v.id && b.status === 'confirmed');
+  const duplicatePlan = getDuplicateVenuePlan();
+  const displayVenues = duplicatePlan.display;
+  const duplicateBanner = duplicatePlan.count
+    ? `<div class="venue-duplicate-banner">
+        <div><strong>${duplicatePlan.count} duplicate venue row(s) hidden.</strong><span>Same venue name, date and show time. Click Remove Duplicates to clean the live database.</span></div>
+        ${canEditVenues ? '<button type="button" onclick="cleanupDuplicateVenues()">Remove Duplicates</button>' : ''}
+      </div>`
+    : '';
+  grid.innerHTML = duplicateBanner + displayVenues.map(v=>{
+    const vKey = venueDuplicateKey(v);
+    const isBooked = allBookings.some(function(b) {
+      if (b.status !== 'confirmed') return false;
+      if (b.venueId === v.id) return true;
+      var bv = findVenueForBooking(b);
+      return vKey && bv && venueDuplicateKey(bv) === vKey;
+    });
     const bookedBadge = isBooked
       ? '<span class="vrc-badge vrc-booked">Booked</span>'
       : '';
@@ -5505,6 +5735,37 @@ function toggleVenueStatus(id) {
   syncCalendarToVenueDates(true);
   renderCalendar(); renderVenueManager(); renderVenueList(); updateHeroStats(); updateAdminStats(); saveAll();
   showToast(v.status==='open'?'':'',`Venue ${v.status==='open'?'Opened':'Closed'}`,`${v.name} is now ${v.status}.`);
+}
+async function cleanupDuplicateVenues() {
+  if (!requireAdminPerm('venues', 'venue cleanup')) return;
+  var plan = getDuplicateVenuePlan();
+  if (!plan.count) {
+    showToast('', 'No Duplicates', 'No same date/time duplicate venues found.');
+    return;
+  }
+  if (!confirm('Remove ' + plan.count + ' duplicate venue row(s)? Bookings connected to duplicate rows will be moved to the kept venue row.')) return;
+  applyDuplicateVenuePlan(plan);
+  syncCalendarToVenueDates(true);
+  renderCalendar(); renderVenueManager(); renderVenueList(); updateHeroStats(); updateAdminStats();
+  saveLocal();
+  try {
+    var oldIds = Object.keys(plan.replacementMap);
+    for (var i = 0; i < oldIds.length; i++) {
+      var oldId = oldIds[i];
+      var newId = plan.replacementMap[oldId];
+      await neonSQL('UPDATE bookings SET venue_id=$1 WHERE venue_id=$2', [newId, oldId]);
+    }
+    for (var j = 0; j < plan.removedIds.length; j++) {
+      await dbDeleteVenue(plan.removedIds[j]);
+    }
+    await saveRemoteNow(true);
+    logAdminAction('cleanup_duplicate_venues', plan.count + ' duplicate venue rows removed').catch(function(){});
+    showToast('', 'Duplicates Removed', plan.count + ' duplicate venue row(s) were cleaned from live data.');
+  } catch(e) {
+    console.error('[OTS] duplicate venue cleanup failed:', e);
+    showToast('', 'Cleanup Failed', 'Could not clean duplicates from Neon. Refresh and try again.');
+    refreshAdmin();
+  }
 }
 function deleteVenue(id) {
   if (!requireAdminPerm('venues', 'venue editing')) return;
@@ -5884,14 +6145,14 @@ function setFilter(f) {
   filterTable();
 }
 function isBookingNeedsProofOrPoint(b) {
-  return !!(b && b.status === 'confirmed' && isBookingShowOver(b, new Date()) && (!b.proofUrl || !b.proofClaimed));
+  return !!(b && b.status === 'confirmed' && isBookingShowOver(b, new Date()) && !b.proofClaimed);
 }
 function bookingFollowUpState(b) {
   if (!b || b.status !== 'confirmed') return { cls:'info', label:'-' };
   if (!isBookingShowOver(b, new Date())) return { cls:'info', label:'Upcoming' };
+  if (b.proofClaimed) return { cls:'done', label:'Claimed' };
   if (!b.proofUrl) return { cls:'missing', label:'Photo Missing' };
-  if (!b.proofClaimed) return { cls:'pending', label:'Claim Pending' };
-  return { cls:'done', label:'Claimed' };
+  return { cls:'pending', label:'Claim Pending' };
 }
 function filterTable() {
   const q=(document.getElementById('adminSearch')?.value||'').toLowerCase();
@@ -5945,13 +6206,13 @@ function renderAdminProofCell(b, canRescueShows) {
     ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminAllowProofUpload('${id}')">Allow Upload</button>
        <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>`
     : '';
-  if (b.proofClaimed && b.proofUrl) {
-    var proofPreview = isProofPlaceholder(b.proofUrl)
+  if (b.proofClaimed) {
+    var proofPreview = b.proofUrl && isProofPlaceholder(b.proofUrl)
       ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminViewProof('${id}')">View Photo</button>`
-      : `<div style="display:flex;align-items:center;gap:.4rem;cursor:pointer;" onclick="adminViewProof('${id}')">
+      : (b.proofUrl ? `<div style="display:flex;align-items:center;gap:.4rem;cursor:pointer;" onclick="adminViewProof('${id}')">
            <img src="${b.proofUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1.5px solid var(--green);" alt="proof">
            <span style="font-size:.65rem;font-weight:700;color:var(--green);letter-spacing:.04em;"> CLAIMED</span>
-         </div>`;
+         </div>` : `<span style="font-size:.68rem;color:var(--green);font-weight:800;letter-spacing:.04em;">CLAIMED</span>`);
     return proofPreview + rescueButtons;
   }
   if (b.proofUrl) {
@@ -6007,7 +6268,7 @@ function renderAdminTable(rows) {
       <div class="td">${renderAdminProofCell(b, canRescueShows)}</div>
       <div class="td"><span class="td-followup ${follow.cls}">${follow.label}</span></div>
       <div class="td td-actions">
-        ${canApproveSlots ? `<button class="btn-secondary" style="font-size:.62rem;padding:.24rem .45rem;margin-top:.3rem;" onclick="openAdminBookingEdit('${b.id}')">Edit</button>` : ''}
+        ${canApproveSlots ? `<button class="btn-secondary" style="font-size:.62rem;padding:.24rem .45rem;margin-top:.3rem;" onclick="openAdminBookingEdit('${otsJsString(b.id)}', event)">Edit</button>` : ''}
         ${b.status==='pending' && canApproveSlots ? `
           <button class="action-btn approve" onclick="approveBooking('${b.id}')"></button>
           <button class="action-btn reject"  onclick="rejectBooking('${b.id}')">x</button>`
@@ -6084,7 +6345,10 @@ function adminBookingVenueChanged() {
   if (dateEl && v.date) dateEl.value = v.date;
 }
 
-function openAdminBookingEdit(id) {
+function openAdminBookingEdit(id, event) {
+  if (event) {
+    try { event.preventDefault(); event.stopPropagation(); } catch(e) {}
+  }
   if (!requireAdminPerm('slots', 'edit booking')) return;
   var b = allBookings.find(function(x){ return x.id === id; });
   if (!b) return;
@@ -6105,8 +6369,14 @@ function openAdminBookingEdit(id) {
   document.getElementById('abe-status').value = b.status || 'pending';
   document.getElementById('abe-notes').value = b.notes || '';
   _setAdminBookingEditError('');
-  try { document.body.classList.add('modal-lock'); } catch(e) {}
+  try { document.body.classList.add('modal-lock', 'admin-booking-edit-open'); } catch(e) {}
   modal.classList.add('show');
+  setTimeout(function(){
+    var first = document.getElementById('abe-team');
+    if (first) {
+      try { first.focus({ preventScroll:true }); } catch(e) { try { first.focus(); } catch(_e) {} }
+    }
+  }, 80);
 }
 
 function openAdminEmergencyCredit() {
@@ -6128,7 +6398,7 @@ function openAdminEmergencyCredit() {
   document.getElementById('abe-status').value = 'confirmed';
   document.getElementById('abe-notes').value = 'Emergency admin show credit';
   _setAdminBookingEditError('');
-  try { document.body.classList.add('modal-lock'); } catch(e) {}
+  try { document.body.classList.add('modal-lock', 'admin-booking-edit-open'); } catch(e) {}
   modal.classList.add('show');
 }
 
@@ -6145,7 +6415,7 @@ function openAdminEmergencyUpload() {
 function closeAdminBookingEdit() {
   var modal = document.getElementById('adminBookingEditModal');
   if (modal) modal.classList.remove('show');
-  try { document.body.classList.remove('modal-lock'); } catch(e) {}
+  try { document.body.classList.remove('modal-lock', 'admin-booking-edit-open'); } catch(e) {}
   _adminBookingEditId = null;
 }
 
@@ -6605,10 +6875,32 @@ function adminCancel(id) {
 const MONTHLY_REPORT_DRAFT_KEY = 'ots_monthly_report_draft_v1';
 var _monthlyReportRows = [];
 var _monthlyReportLastContextKey = '';
+var _monthlyReportLoadedMonthKey = '';
+var _monthlyReportLoadFailedMonthKey = '';
+var _monthlyReportRefreshPromise = null;
 
 function monthlyReportContextKey(ctx) {
   ctx = ctx || getMonthlyReportContext();
   return String(ctx.monthKey || '') + '|' + String(ctx.type || 'all');
+}
+
+function getMonthlyReportMonthKeyForLoad() {
+  var el = document.getElementById('monthlyReportMonth');
+  var val = el && el.value ? String(el.value) : localMonthKey();
+  return /^\d{4}-\d{2}$/.test(val) ? val : localMonthKey();
+}
+
+function bookingBelongsToMonth(booking, monthKey) {
+  var date = normalizeVenueDate(booking && booking.date);
+  return !!(date && date.slice(0, 7) === monthKey);
+}
+
+function mergeMonthlyReportBookings(mappedBookings, monthKey) {
+  if (!monthKey) return;
+  allBookings = (allBookings || []).filter(function(b) {
+    return !bookingBelongsToMonth(b, monthKey);
+  }).concat(mappedBookings || []);
+  _monthlyReportLoadFailedMonthKey = '';
 }
 
 function localMonthKey(date) {
@@ -6758,6 +7050,7 @@ function buildMonthlyReportRows(ctx) {
     var venue = findVenueForBooking(b);
     var date = normalizeVenueDate(b.date);
     var timeRange = venue ? formatVenueTimeRange(venue) : '-';
+    var hasProof = bookingHasProofRecord(b);
     var row = {
       id: String(b.id || ''),
       booking: b,
@@ -6772,7 +7065,7 @@ function buildMonthlyReportRows(ctx) {
       performanceType: b.type || '',
       performers: bookingPerformersText(b) || b.name || '',
       photoUrl: isProofPlaceholder(b.proofUrl) ? '' : (b.proofUrl || ''),
-      hasProof: !!b.proofUrl,
+      hasProof: hasProof,
       sortMs: bookingStartTimeMs(b)
     };
     row.footfall = monthlyReportFootfallFor(row, ctx);
@@ -6893,13 +7186,30 @@ function generateMonthlyReportPreview(allowRefresh) {
     }
     return;
   }
+  if (adminLoggedIn && currentAdminTab === 'reports' && _monthlyReportLoadedMonthKey !== initialCtx.monthKey && _monthlyReportLoadFailedMonthKey !== initialCtx.monthKey) {
+    if (_monthlyReportRows.length && _monthlyReportLastContextKey === contextKey) {
+      showMonthlyReportRefreshingNotice('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
+    } else {
+      renderMonthlyReportLoading('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
+    }
+    if (!_monthlyReportRefreshPromise) {
+      _monthlyReportRefreshPromise = refreshAdmin()
+        .then(function(){ generateMonthlyReportPreview(false); })
+        .catch(function(){ generateMonthlyReportPreview(false); })
+        .finally(function(){ _monthlyReportRefreshPromise = null; });
+    }
+    return;
+  }
   if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !_adminDataLoading) {
     if (_monthlyReportRows.length && _monthlyReportLastContextKey === contextKey) {
       showMonthlyReportRefreshingNotice('Refreshing live report data...');
     } else {
       renderMonthlyReportLoading('Loading report data...');
     }
-    refreshAdmin().then(function(){ generateMonthlyReportPreview(false); }).catch(function(){ generateMonthlyReportPreview(false); });
+    _monthlyReportRefreshPromise = refreshAdmin()
+      .then(function(){ generateMonthlyReportPreview(false); })
+      .catch(function(){ generateMonthlyReportPreview(false); })
+      .finally(function(){ _monthlyReportRefreshPromise = null; });
     return;
   }
   var ctx = initialCtx;
@@ -6931,7 +7241,7 @@ async function hydrateMonthlyReportPhotos(rows) {
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
     var b = row.booking;
-    if (!b || !isProofPlaceholder(b.proofUrl)) continue;
+    if (!b || row.photoUrl || (!row.hasProof && !isProofPlaceholder(b.proofUrl))) continue;
     try {
       var proof = await fetchBookingProofUrl(b.id);
       if (proof) {
@@ -6967,7 +7277,9 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
     prevWeek = week;
     var photo = row.photoUrl
       ? '<img src="' + otsEscapeHtml(row.photoUrl) + '" alt="' + otsEscapeHtml(row.teamName) + ' at ' + otsEscapeHtml(row.venueName) + '">'
-      : '<div class="report-photo-empty">Photo not attached</div>';
+      : (row.hasProof
+        ? '<div class="report-photo-empty">Proof photo recorded</div>'
+        : '<div class="report-photo-empty">Photo not attached</div>');
     return '<section class="report-page report-show-page">' +
       logoHtml +
       weekHtml +

@@ -2,6 +2,42 @@
   // -- BOOT --
   init();
 
+  function renderBuildEnvironmentBadge() {
+    try {
+      var href = String(location.href || '').toLowerCase();
+      var host = String(location.hostname || '').toLowerCase();
+      var isTestLike = /(^|[.\-_])(dev|test|staging)([.\-_]|$)/i.test(host) ||
+        href.indexOf('ots_dev_upload_test_site') > -1 ||
+        href.indexOf('localhost') > -1 ||
+        href.indexOf('127.0.0.1') > -1;
+      if (!isTestLike || document.getElementById('otsEnvBadge')) return;
+      document.documentElement.setAttribute('data-ots-env', 'test');
+      var badge = document.createElement('div');
+      badge.id = 'otsEnvBadge';
+      badge.textContent = 'TEST BUILD';
+      badge.style.cssText = [
+        'position:fixed',
+        'left:12px',
+        'top:12px',
+        'z-index:2147483647',
+        'background:#ffb84d',
+        'color:#1a1208',
+        'border:1px solid rgba(0,0,0,.18)',
+        'border-radius:999px',
+        'padding:.38rem .68rem',
+        'font-family:Arial,sans-serif',
+        'font-size:11px',
+        'font-weight:900',
+        'letter-spacing:.08em',
+        'box-shadow:0 10px 24px rgba(0,0,0,.22)',
+        'pointer-events:none'
+      ].join(';');
+      document.body.appendChild(badge);
+    } catch(e) {}
+  }
+
+  renderBuildEnvironmentBadge();
+
   // Hide nav whenever the member login overlay is visible
   (function() {
     var nav = document.querySelector('.nav');
@@ -48,13 +84,14 @@ function restoreVisiblePage() {
 
     if (mlp) mlp.classList.add('hidden');
 
+    const hashPage = (typeof otsPublicPageFromHash === 'function') ? otsPublicPageFromHash() : '';
     const savedPage = localStorage.getItem('ots_current_page');
     const safePage = ['home', 'venues', 'form', 'myrequests', 'leaderboard', 'profile'].includes(savedPage)
       ? savedPage
       : 'home';
 
     if (typeof showPage === 'function') {
-      showPage(safePage);
+      showPage(hashPage || safePage);
     }
   } catch (e) {
     if (typeof showPage === 'function') {
@@ -119,11 +156,13 @@ function forceImmediateBootPage() {
     // If member session is already known from pre-render flag, show home instantly
     if (document.documentElement.hasAttribute('data-member-active')) {
       if (mlp) mlp.classList.add('hidden');
+      var hashPage = (typeof otsPublicPageFromHash === 'function') ? otsPublicPageFromHash() : '';
       var savedPage = '';
       try { savedPage = localStorage.getItem('ots_current_page') || ''; } catch(e) {}
       var safePage = ['home','venues','form','myrequests','leaderboard','profile'].indexOf(savedPage) > -1
         ? savedPage
         : 'home';
+      safePage = hashPage || safePage;
       var targetPage = document.getElementById('page-' + safePage);
       if (targetPage && !hasActive) targetPage.classList.add('active');
       refreshTopNavSoon();

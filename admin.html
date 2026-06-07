@@ -62,7 +62,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
   <div class="nav-inner">
     <div id="navLogo" onclick="handleLogoClick()" title="On The Streets" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:.75rem;"><img src="./ots-brand-mark.png" decoding="async" alt="On The Streets of Chennai" style="height:50px;width:auto;display:block;"> <span class="pending-badge" id="pending-count-badge" style="display:none">0</span></div>
     <div class="nav-tabs" id="publicNavTabs">
-      <button class="ntab active" id="ntab-home" onclick="showPage('home')">&#127908; Home</button>
+      <button class="ntab active" id="ntab-home" onclick="openPublicPage('home')">&#127908; Home</button>
       <button class="ntab" id="ntab-form" style="display:none;" onclick="showPage('form')">&#128221; Book</button>
     </div>
     <div style="display:flex;gap:.8rem;align-items:center;">
@@ -665,6 +665,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
           </div>
           <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
             <button id="clearAllVenuesBtn" class="export-btn" style="display:none;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.35);color:#ff6b6b;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.6rem 1.2rem;cursor:pointer;border-radius:3px;transition:all .2s;" onclick="openClearVenuesModal()"> Delete All Venues</button>
+            <button class="export-btn perm-venues-edit" style="background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.32);color:#ffc978;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.6rem 1.2rem;cursor:pointer;border-radius:3px;transition:all .2s;" onclick="cleanupDuplicateVenues()"> Remove Duplicates</button>
             <button class="export-btn perm-venues-edit" style="background:rgba(112,186,244,.15);border:1px solid rgba(112,186,244,.3);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.6rem 1.2rem;cursor:pointer;border-radius:3px;transition:all .2s;" onclick="switchAdminTab('import')"> Import CSV</button>
             <button class="btn-add-venue perm-venues-edit" onclick="openVenueModal(null)">+ Add Venue</button>
           </div>
@@ -1549,7 +1550,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
 
 <!-- =============== MOBILE BOTTOM NAV =============== -->
 <nav id="mobile-nav">
-  <button class="mn-item active" id="mn-home" onclick="showPage('home')">
+  <button class="mn-item active" id="mn-home" onclick="openPublicPage('home')">
     <span class="mn-icon">&#127968;</span>
     <span class="mn-label">Home</span>
   </button>

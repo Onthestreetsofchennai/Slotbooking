@@ -436,6 +436,43 @@ select.form-input option{background:#1a1729;color:#f4f0ff;}
 .btn-add-venue{background:var(--grad);color:#fff;-webkit-text-fill-color:#fff;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:.6rem 1.3rem;border:none;border-radius:3px;cursor:pointer;transition:all .2s;}
 .btn-add-venue:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(245,119,161,.3);}
 .venue-mgmt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;}
+.venue-duplicate-banner{
+  grid-column:1/-1;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  flex-wrap:wrap;
+  border:1px solid rgba(255,184,77,.32);
+  background:rgba(255,184,77,.08);
+  color:#ffc978;
+  border-radius:7px;
+  padding:.85rem 1rem;
+}
+.venue-duplicate-banner strong{
+  display:block;
+  font-size:.86rem;
+  margin-bottom:.15rem;
+}
+.venue-duplicate-banner span{
+  display:block;
+  color:rgba(255,201,120,.78);
+  font-size:.76rem;
+  line-height:1.45;
+}
+.venue-duplicate-banner button{
+  background:rgba(255,184,77,.14);
+  border:1px solid rgba(255,184,77,.38);
+  color:#ffc978;
+  border-radius:5px;
+  padding:.55rem .85rem;
+  cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+  font-size:.72rem;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
 .vmg-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1.3rem;position:relative;transition:all .2s;}
 .vmg-card:hover{border-color:rgba(255,255,255,.2);}
 .vmg-top{display:flex;align-items:flex-start;gap:.8rem;margin-bottom:1rem;}
@@ -3379,6 +3416,29 @@ body.modal-lock select,
 body.modal-lock textarea{
   pointer-events:auto !important;
   touch-action:manipulation !important;
+}
+
+body.admin-booking-edit-open input[type=file],
+body.admin-booking-edit-open .csv-import-zone,
+body.admin-booking-edit-open .member-phone-import-zone,
+body.admin-booking-edit-open .photo-drop-zone,
+body.admin-booking-edit-open .btn-upload-photo{
+  pointer-events:none !important;
+}
+
+body.admin-booking-edit-open #adminBookingEditModal,
+body.admin-booking-edit-open #adminBookingEditModal *{
+  pointer-events:auto !important;
+}
+
+body.admin-booking-edit-open .admin-booking-edit-modal input.form-input,
+body.admin-booking-edit-open .admin-booking-edit-modal select.form-input,
+body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
+  position:relative;
+  z-index:4;
+  touch-action:auto !important;
+  -webkit-user-select:text;
+  user-select:text;
 }
 
 @media(max-width:700px){
