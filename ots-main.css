@@ -5068,7 +5068,7 @@ body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
 .monthly-report-table-head,
 .monthly-report-row{
   display:grid;
-  grid-template-columns:1fr 1.35fr 1.35fr .95fr .75fr .7fr .75fr;
+  grid-template-columns:1fr 1.35fr 1.35fr .95fr .75fr .7fr;
   gap:.7rem;
   align-items:center;
 }
@@ -5147,6 +5147,10 @@ body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
   padding:.38rem .62rem;
   cursor:pointer;
   white-space:nowrap;
+  margin-top:.5rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
 }
 .monthly-report-remove-btn:hover,
 .monthly-report-restore-btn:hover{
@@ -5175,7 +5179,7 @@ body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
   }
   .monthly-report-table-head,
   .monthly-report-row{
-    min-width:900px;
+    min-width:780px;
   }
 }
 @media(max-width:620px){

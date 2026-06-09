@@ -7355,18 +7355,17 @@ function renderMonthlyReportRows(ctx, rows) {
   cacheMonthlyReportRows(ctx, _monthlyReportRows);
   preview.innerHTML =
     '<div class="monthly-report-table-head">' +
-      '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div><div>Action</div>' +
+      '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div>' +
     '</div>' +
     _monthlyReportRows.map(function(row) {
       var photoLabel = row.hasProof ? 'Available' : 'Missing';
       return '<div class="monthly-report-row">' +
-        '<div><strong>' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + '</strong><span>' + otsEscapeHtml(row.dayName) + '</span></div>' +
+        '<div><strong>' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + '</strong><span>' + otsEscapeHtml(row.dayName) + '</span><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove this show</button></div>' +
         '<div><strong>' + otsEscapeHtml(row.venueName) + '</strong><span>' + otsEscapeHtml(row.venueType || 'Venue') + '</span></div>' +
         '<div><strong>' + otsEscapeHtml(row.teamName) + '</strong><span>Booked by ' + otsEscapeHtml(row.bookedBy || '-') + '</span></div>' +
         '<div>' + otsEscapeHtml(row.timeRange) + '</div>' +
         '<div><input type="number" min="0" step="1" value="' + otsEscapeHtml(row.footfall || '') + '" placeholder="0" oninput="setMonthlyReportFootfall(\'' + otsJsString(row.id) + '\', this.value)"></div>' +
         '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span></div>' +
-        '<div><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove</button></div>' +
       '</div>';
     }).join('');
 }
