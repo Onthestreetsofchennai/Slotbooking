@@ -7128,6 +7128,51 @@ function monthlyReportFootfallFor(row, ctx) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+function monthlyReportRemovedKey(ctx, bookingId) {
+  return monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'removed');
+}
+
+function isMonthlyReportShowRemoved(ctx, bookingId) {
+  var draft = readMonthlyReportDraft();
+  return draft[monthlyReportRemovedKey(ctx, bookingId)] === '1';
+}
+
+function monthlyReportRemovedCount(ctx) {
+  var draft = readMonthlyReportDraft();
+  var prefix = [ctx.monthKey || '', ctx.type || 'all'].join('|') + '|';
+  return Object.keys(draft).filter(function(key) {
+    return key.indexOf(prefix) === 0 && key.slice(-8) === '|removed' && draft[key] === '1';
+  }).length;
+}
+
+function removeMonthlyReportShow(bookingId) {
+  if (!requireAdminPerm('reports', 'monthly report editing')) return;
+  var ctx = getMonthlyReportContext();
+  var draft = readMonthlyReportDraft();
+  draft[monthlyReportRemovedKey(ctx, bookingId)] = '1';
+  writeMonthlyReportDraft(draft);
+  _monthlyReportRows = (_monthlyReportRows || []).filter(function(row) {
+    return String(row.id) !== String(bookingId);
+  });
+  _monthlyReportRowsByContext[monthlyReportContextKey(ctx)] = _monthlyReportRows.slice();
+  renderMonthlyReportRows(ctx, _monthlyReportRows);
+  showToast('', 'Show Removed', 'Removed from this monthly report only.');
+}
+
+function restoreMonthlyReportShows() {
+  if (!requireAdminPerm('reports', 'monthly report editing')) return;
+  var ctx = getMonthlyReportContext();
+  var draft = readMonthlyReportDraft();
+  var prefix = [ctx.monthKey || '', ctx.type || 'all'].join('|') + '|';
+  Object.keys(draft).forEach(function(key) {
+    if (key.indexOf(prefix) === 0 && key.slice(-8) === '|removed') delete draft[key];
+  });
+  writeMonthlyReportDraft(draft);
+  delete _monthlyReportRowsByContext[monthlyReportContextKey(ctx)];
+  generateMonthlyReportPreview(false);
+  showToast('', 'Shows Restored', 'Removed shows are back in this report.');
+}
+
 function monthlyReportVenueType(venue, booking) {
   var explicit = normalizeVenueType((venue && venue.venueType) || '', (venue && venue.name) || (booking && booking.venue) || '');
   if (explicit) return explicit;
@@ -7166,6 +7211,7 @@ function buildMonthlyReportRows(ctx) {
     if (!date || date.slice(0, 7) !== ctx.monthKey) return false;
     var status = normalizeStatus(b && b.status, '');
     if (['confirmed','approved','completed'].indexOf(status) === -1) return false;
+    if (isMonthlyReportShowRemoved(ctx, b && b.id)) return false;
     var venue = findVenueForBooking(b);
     return monthlyReportScopeMatches(venue, b, ctx.type);
   }).map(function(b) {
@@ -7257,10 +7303,12 @@ function renderMonthlyReportSummary(ctx, rows) {
     var notes = [];
     if (s.missingFootfall) notes.push(s.missingFootfall + ' show(s) need footfall before the report looks complete.');
     if (s.missingPhotos) notes.push(s.missingPhotos + ' show(s) do not have proof photos yet.');
+    var removedShows = monthlyReportRemovedCount(ctx);
+    if (removedShows) notes.push(removedShows + ' show(s) removed from this report. <button type="button" class="monthly-report-restore-btn" onclick="restoreMonthlyReportShows()">Restore removed shows</button>');
     var hiddenUncategorized = countMonthlyReportHiddenUncategorized(ctx);
     if (hiddenUncategorized) notes.push(hiddenUncategorized + ' old show(s) are hidden because their venue type is not set. Public is only visibility; set GCC/Metro/Foundation/Private in Venue Manager.');
     if (!rows.length) notes.push('No confirmed shows found for ' + otsEscapeHtml(ctx.typeLabel) + ' in ' + otsEscapeHtml(monthLabelFromKey(ctx.monthKey, false)) + '.');
-    warn.innerHTML = notes.length ? notes.map(function(n){ return '<div>' + otsEscapeHtml(n) + '</div>'; }).join('') : '<div class="ok">Report data looks complete.</div>';
+    warn.innerHTML = notes.length ? notes.map(function(n){ return '<div>' + (String(n).indexOf('<button') > -1 ? n : otsEscapeHtml(n)) + '</div>'; }).join('') : '<div class="ok">Report data looks complete.</div>';
   }
 }
 
@@ -7307,7 +7355,7 @@ function renderMonthlyReportRows(ctx, rows) {
   cacheMonthlyReportRows(ctx, _monthlyReportRows);
   preview.innerHTML =
     '<div class="monthly-report-table-head">' +
-      '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div>' +
+      '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div><div>Action</div>' +
     '</div>' +
     _monthlyReportRows.map(function(row) {
       var photoLabel = row.hasProof ? 'Available' : 'Missing';
@@ -7318,6 +7366,7 @@ function renderMonthlyReportRows(ctx, rows) {
         '<div>' + otsEscapeHtml(row.timeRange) + '</div>' +
         '<div><input type="number" min="0" step="1" value="' + otsEscapeHtml(row.footfall || '') + '" placeholder="0" oninput="setMonthlyReportFootfall(\'' + otsJsString(row.id) + '\', this.value)"></div>' +
         '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span></div>' +
+        '<div><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove</button></div>' +
       '</div>';
     }).join('');
 }
@@ -7396,6 +7445,91 @@ async function hydrateMonthlyReportPhotos(rows) {
   }
 }
 
+function monthlyReportDataUrlToBlob(dataUrl) {
+  var parts = String(dataUrl || '').split(',');
+  var meta = parts[0] || '';
+  var b64 = parts[1] || '';
+  var mime = (meta.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+  var bin = atob(b64);
+  var bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function monthlyReportPhotoBlob(url) {
+  url = String(url || '');
+  if (!url) return null;
+  if (/^data:image\//i.test(url)) return monthlyReportDataUrlToBlob(url);
+  var response = await fetch(url, { mode:'cors' });
+  if (!response.ok) throw new Error('Photo fetch failed');
+  return response.blob();
+}
+
+function monthlyReportJpegOrientationFromBuffer(buffer) {
+  var view = new DataView(buffer);
+  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xFFD8) return 1;
+  var offset = 2;
+  while (offset < view.byteLength) {
+    var marker = view.getUint16(offset, false);
+    offset += 2;
+    if (marker === 0xFFE1) {
+      var length = view.getUint16(offset, false);
+      offset += 2;
+      if (view.getUint32(offset, false) !== 0x45786966) return 1;
+      var tiff = offset + 6;
+      var little = view.getUint16(tiff, false) === 0x4949;
+      var firstIfd = view.getUint32(tiff + 4, little);
+      var entries = view.getUint16(tiff + firstIfd, little);
+      for (var i = 0; i < entries; i++) {
+        var entry = tiff + firstIfd + 2 + (i * 12);
+        if (view.getUint16(entry, little) === 0x0112) return view.getUint16(entry + 8, little) || 1;
+      }
+      return 1;
+    }
+    if ((marker & 0xFF00) !== 0xFF00) break;
+    offset += view.getUint16(offset, false);
+  }
+  return 1;
+}
+
+async function normalizeMonthlyReportPhoto(url) {
+  try {
+    if (!url || typeof createImageBitmap !== 'function') return url;
+    var blob = await monthlyReportPhotoBlob(url);
+    if (!blob || !/^image\/jpe?g$/i.test(blob.type || '')) return url;
+    var orientation = monthlyReportJpegOrientationFromBuffer(await blob.arrayBuffer());
+    if ([3, 6, 8].indexOf(orientation) === -1) return url;
+    var bitmap = await createImageBitmap(blob, { imageOrientation:'none' });
+    var swap = orientation === 6 || orientation === 8;
+    var canvas = document.createElement('canvas');
+    canvas.width = swap ? bitmap.height : bitmap.width;
+    canvas.height = swap ? bitmap.width : bitmap.height;
+    var ctx = canvas.getContext('2d');
+    if (orientation === 3) {
+      ctx.translate(canvas.width, canvas.height);
+      ctx.rotate(Math.PI);
+    } else if (orientation === 6) {
+      ctx.translate(canvas.width, 0);
+      ctx.rotate(Math.PI / 2);
+    } else if (orientation === 8) {
+      ctx.translate(0, canvas.height);
+      ctx.rotate(-Math.PI / 2);
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    try { bitmap.close(); } catch(e) {}
+    return canvas.toDataURL('image/jpeg', 0.9);
+  } catch(e) {
+    console.warn('[OTS] report photo orientation normalize skipped:', e && (e.message || e));
+    return url;
+  }
+}
+
+async function normalizeMonthlyReportPhotos(rows) {
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i] && rows[i].photoUrl) rows[i].photoUrl = await normalizeMonthlyReportPhoto(rows[i].photoUrl);
+  }
+}
+
 function monthlyReportLogosHtml() {
   var otsLogo = new URL('ots-brand-mark.png', location.href).href;
   var gccLogo = new URL('gcc-logo.png', location.href).href;
@@ -7417,7 +7551,7 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
     var weekHtml = week !== prevWeek ? '<div class="report-week-title">' + otsEscapeHtml(week) + '</div>' : '';
     prevWeek = week;
     var photo = row.photoUrl
-      ? '<img src="' + otsEscapeHtml(row.photoUrl) + '" alt="' + otsEscapeHtml(row.teamName) + ' at ' + otsEscapeHtml(row.venueName) + '">'
+      ? '<img class="report-proof-photo" src="' + otsEscapeHtml(row.photoUrl) + '" alt="' + otsEscapeHtml(row.teamName) + ' at ' + otsEscapeHtml(row.venueName) + '">'
       : (row.hasProof
         ? '<div class="report-photo-empty">Proof photo recorded</div>'
         : '<div class="report-photo-empty">Photo not attached</div>');
@@ -7425,11 +7559,11 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
       logoHtml +
       weekHtml +
       '<div class="report-show-line">' +
-        '<strong>' + (idx + 1) + '. ' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + ' ' + otsEscapeHtml(String(row.dayName).toUpperCase()) + '</strong>' +
-        '<span>' + otsEscapeHtml(row.venueName) + '</span>' +
-        '<span>' + otsEscapeHtml(row.timeRange) + '</span>' +
-        '<span>' + otsEscapeHtml(row.teamName) + '</span>' +
-        '<span>' + otsEscapeHtml(row.footfall || 0) + ' Footfall</span>' +
+        '<div><strong>' + (idx + 1) + '. Date :</strong> <span>' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + ' ' + otsEscapeHtml(String(row.dayName).toUpperCase()) + '</span></div>' +
+        '<div><strong>Location :</strong> <span>' + otsEscapeHtml(row.venueName) + '</span></div>' +
+        '<div><strong>Band name :</strong> <span>' + otsEscapeHtml(row.teamName) + '</span></div>' +
+        '<div><strong>Time :</strong> <span>' + otsEscapeHtml(row.timeRange) + '</span></div>' +
+        '<div><strong>Foot fall :</strong> <span>' + otsEscapeHtml(row.footfall || 0) + '</span></div>' +
       '</div>' +
       '<div class="report-photo-box">' + photo + '</div>' +
     '</section>';
@@ -7444,8 +7578,8 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
     '.cover{justify-content:center;align-items:center;text-align:center;}.cover h1{font-size:74px;line-height:1.05;margin:0;text-transform:uppercase;letter-spacing:.02em;}.cover p{font-size:22px;margin:22px 0 0;color:#555;}' +
     '.summary h2,.divider h2{font-size:52px;margin:110px 0 28px;text-transform:uppercase;}.summary-table{width:74%;margin:auto;border-collapse:collapse;font-size:26px;}.summary-table td{border:3px solid #111;padding:18px 22px;}.summary-table td:last-child{text-align:right;font-weight:800;}' +
     '.divider{justify-content:center;align-items:center;text-align:center;background:#f6f7fb;}.divider h2{margin:0;font-size:58px;max-width:900px;}' +
-    '.report-week-title{font-size:42px;font-weight:900;margin:92px 0 18px;text-transform:uppercase;}.report-show-line{font-size:22px;line-height:1.45;display:flex;gap:14px;flex-wrap:wrap;margin:82px 0 24px;align-items:center;}.report-show-line span:not(:last-child)::after{content:"/";margin-left:14px;color:#777;}' +
-    '.report-photo-box{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;border:2px solid #e3e6ee;background:#fafafa;}.report-photo-box img{max-width:100%;max-height:100%;object-fit:contain;}.report-photo-empty{font-size:28px;color:#999;}' +
+    '.report-week-title{font-size:42px;font-weight:900;margin:92px 0 18px;text-transform:uppercase;}.report-show-line{font-size:22px;line-height:1.45;display:grid;grid-template-columns:1fr 1fr;gap:8px 34px;margin:82px 0 24px;align-items:start;}.report-show-line div{min-width:0;}.report-show-line strong{font-weight:900;}.report-show-line span{font-weight:500;}' +
+    '.report-photo-box{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;border:2px solid #e3e6ee;background:#fafafa;}.report-proof-photo{max-width:100%;max-height:100%;object-fit:contain;image-orientation:from-image;transform:rotate(0deg);}.report-photo-empty{font-size:28px;color:#999;}' +
     '@media print{.report-page{width:100vw;height:100vh;}}' +
     '</style></head><body>' +
     '<section class="report-page cover">' + logoHtml + '<h1>' + otsEscapeHtml(ctx.title) + '</h1><p>' + otsEscapeHtml(ctx.typeLabel) + ' / Generated ' + otsEscapeHtml(generated) + '</p></section>' +
@@ -7486,6 +7620,7 @@ async function exportMonthlyReportPDF() {
   showToast('', 'Preparing Report', 'Loading proof photos for the PDF preview...');
   try {
     await hydrateMonthlyReportPhotos(rows);
+    await normalizeMonthlyReportPhotos(rows);
     var html = buildMonthlyReportPrintHtml(ctx, rows);
     win.document.open();
     win.document.write(html);
