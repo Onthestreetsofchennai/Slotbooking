@@ -7141,6 +7141,9 @@ function monthlyReportNormalizeRotation(value) {
   return 0;
 }
 
+var _monthlyReportPhotoData = null;
+var _monthlyReportPhotoPreparing = false;
+
 function monthlyReportRemovedKey(ctx, bookingId) {
   return monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'removed');
 }
@@ -7223,9 +7226,12 @@ function ensureMonthlyReportEditModal() {
         '<option value="180">Rotate 180</option>' +
         '<option value="270">Rotate left 90</option>' +
       '</select></label>' +
+      '<label>Report photo<input id="monthlyReportEditPhotoFile" type="file" accept="image/*" onchange="previewMonthlyReportPhoto(this)"></label>' +
+      '<img id="monthlyReportEditPhotoPreview" class="monthly-report-edit-photo-preview" alt="Report photo preview" style="display:none;">' +
+      '<div id="monthlyReportEditPhotoStatus" class="monthly-report-edit-photo-status"></div>' +
       '<div class="monthly-report-edit-actions">' +
         '<button type="button" class="btn secondary" onclick="closeMonthlyReportEditModal()">Cancel</button>' +
-        '<button type="button" class="btn primary" onclick="saveMonthlyReportShowEdit()">Save report edit</button>' +
+        '<button type="button" class="btn primary" id="monthlyReportEditSaveBtn" onclick="saveMonthlyReportShowEdit()">Save report edit</button>' +
       '</div>' +
     '</div>';
   modal.addEventListener('click', closeMonthlyReportEditModal);
@@ -7249,6 +7255,8 @@ function editMonthlyReportShow(bookingId) {
   }
   var modal = ensureMonthlyReportEditModal();
   modal.dataset.bookingId = String(bookingId || '');
+  _monthlyReportPhotoData = null;
+  _monthlyReportPhotoPreparing = false;
   document.getElementById('monthlyReportEditDate').value = row.reportDateLabel || monthlyReportDefaultDateLabel(row);
   document.getElementById('monthlyReportEditVenue').value = row.venueName || '';
   document.getElementById('monthlyReportEditTeam').value = row.teamName || '';
@@ -7256,19 +7264,69 @@ function editMonthlyReportShow(bookingId) {
   document.getElementById('monthlyReportEditTime').value = row.timeRange || '';
   document.getElementById('monthlyReportEditFootfall').value = row.footfall || '';
   document.getElementById('monthlyReportEditPhotoRotate').value = String(monthlyReportNormalizeRotation(row.photoRotate));
+  var fileEl = document.getElementById('monthlyReportEditPhotoFile');
+  var preview = document.getElementById('monthlyReportEditPhotoPreview');
+  var status = document.getElementById('monthlyReportEditPhotoStatus');
+  if (fileEl) fileEl.value = '';
+  if (preview) {
+    if (row.photoUrl && !isProofPlaceholder(row.photoUrl)) {
+      preview.src = row.photoUrl;
+      preview.style.display = 'block';
+    } else {
+      preview.removeAttribute('src');
+      preview.style.display = 'none';
+    }
+  }
+  if (status) {
+    status.textContent = row.hasProof ? 'Photo already available. Choose a new one only if you want to replace it.' : 'No proof photo found. Choose a photo to add it to this report.';
+    status.style.color = row.hasProof ? 'var(--green)' : 'var(--muted)';
+  }
   modal.classList.add('show');
 }
 
 function closeMonthlyReportEditModal() {
   var modal = document.getElementById('monthlyReportEditModal');
   if (modal) modal.classList.remove('show');
+  _monthlyReportPhotoData = null;
+  _monthlyReportPhotoPreparing = false;
 }
 
-function saveMonthlyReportShowEdit() {
+function previewMonthlyReportPhoto(input) {
+  var file = input && input.files && input.files[0];
+  var preview = document.getElementById('monthlyReportEditPhotoPreview');
+  var status = document.getElementById('monthlyReportEditPhotoStatus');
+  var saveBtn = document.getElementById('monthlyReportEditSaveBtn');
+  _monthlyReportPhotoData = null;
+  if (!file) return;
+  _monthlyReportPhotoPreparing = true;
+  if (saveBtn) saveBtn.disabled = true;
+  if (status) { status.textContent = 'Preparing photo...'; status.style.color = 'var(--muted)'; }
+  _compressImage(file, 900, 0.62, function(dataUrl) {
+    _monthlyReportPhotoData = dataUrl;
+    _monthlyReportPhotoPreparing = false;
+    if (preview) { preview.src = dataUrl; preview.style.display = 'block'; }
+    if (status) { status.textContent = 'Photo ready. Tap Save report edit to attach it.'; status.style.color = 'var(--green)'; }
+    if (saveBtn) saveBtn.disabled = false;
+  }, function(errorMsg) {
+    _monthlyReportPhotoData = null;
+    _monthlyReportPhotoPreparing = false;
+    if (preview) { preview.removeAttribute('src'); preview.style.display = 'none'; }
+    if (status) { status.textContent = errorMsg || 'Could not prepare this photo. Choose another image.'; status.style.color = '#ff4b4b'; }
+    if (saveBtn) saveBtn.disabled = false;
+  });
+}
+
+async function saveMonthlyReportShowEdit() {
   var modal = document.getElementById('monthlyReportEditModal');
   if (!modal) return;
   var bookingId = modal.dataset.bookingId || '';
   if (!bookingId) return;
+  var status = document.getElementById('monthlyReportEditPhotoStatus');
+  var saveBtn = document.getElementById('monthlyReportEditSaveBtn');
+  if (_monthlyReportPhotoPreparing) {
+    if (status) { status.textContent = 'Photo is still preparing. Please wait a moment.'; status.style.color = 'var(--muted)'; }
+    return;
+  }
   var ctx = getMonthlyReportContext();
   var draft = readMonthlyReportDraft();
   [
@@ -7294,11 +7352,33 @@ function saveMonthlyReportShowEdit() {
   var rotate = monthlyReportNormalizeRotation(rotateEl && rotateEl.value);
   if (rotate) draft[rotateKey] = String(rotate);
   else delete draft[rotateKey];
-  writeMonthlyReportDraft(draft);
-  closeMonthlyReportEditModal();
-  delete _monthlyReportRowsByContext[monthlyReportContextKey(ctx)];
-  generateMonthlyReportPreview(false);
-  showToast('', 'Report Row Updated', 'This edit will appear in the monthly report and PDF.');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+  try {
+    var uploadedReportPhoto = !!_monthlyReportPhotoData;
+    if (_monthlyReportPhotoData) {
+      await dbPatch('bookings', bookingId, { proof_url: _monthlyReportPhotoData, proof_claimed: false });
+      [allBookings, myBookings].forEach(function(list) {
+        (list || []).forEach(function(b) {
+          if (String(b.id) === String(bookingId)) {
+            b.proofUrl = _monthlyReportPhotoData;
+            b.proofClaimed = false;
+          }
+        });
+      });
+    }
+    writeMonthlyReportDraft(draft);
+    closeMonthlyReportEditModal();
+    delete _monthlyReportRowsByContext[monthlyReportContextKey(ctx)];
+    generateMonthlyReportPreview(false);
+    saveLocal();
+    showToast('', 'Report Row Updated', uploadedReportPhoto ? 'Photo attached and report updated.' : 'This edit will appear in the monthly report and PDF.');
+  } catch(e) {
+    console.error('[OTS] monthly report edit save:', e);
+    if (status) { status.textContent = 'Could not save: ' + ((e && e.message) || 'Please try again.'); status.style.color = '#ff4b4b'; }
+    showToast('', 'Save Failed', (e && e.message) || 'Please try again.');
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save report edit'; }
+  }
 }
 
 function monthlyReportVenueType(venue, booking) {
