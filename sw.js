@@ -1,4 +1,4 @@
-const OTS_CACHE = "ots-booking-v26";
+const OTS_CACHE = "ots-booking-v27";
 const OTS_ASSETS = [
   "./",
   "./index.html",

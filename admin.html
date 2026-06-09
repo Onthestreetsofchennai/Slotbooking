@@ -984,7 +984,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
           </div>
           <div class="monthly-report-actions">
             <button class="filter-btn" type="button" onclick="generateMonthlyReportPreview(true)">Refresh Preview</button>
-            <button class="btn-add-venue perm-reports-edit" type="button" onclick="exportMonthlyReportPDF()">Print / Save PDF</button>
+            <button class="btn-add-venue perm-reports-edit" type="button" onclick="exportMonthlyReportPDF()">Download PDF</button>
           </div>
         </div>
 
@@ -1334,7 +1334,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
 </div>
 
 <div class="modal-overlay" id="adminBookingEditModal" onclick="if(event.target===this)closeAdminBookingEdit()">
-  <div class="modal admin-booking-edit-modal modal-scroll" onclick="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+  <div class="modal admin-booking-edit-modal modal-scroll">
     <button class="admin-modal-close" type="button" onclick="closeAdminBookingEdit()" aria-label="Close booking editor">&times;</button>
     <div class="modal-title" id="abe-title">Edit Booking</div>
     <div class="modal-sub" id="abe-sub">Use this for last-minute venue or team changes.</div>

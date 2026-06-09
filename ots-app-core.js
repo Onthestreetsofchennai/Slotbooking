@@ -7128,6 +7128,12 @@ function monthlyReportFootfallFor(row, ctx) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+function monthlyReportDefaultDateLabel(row) {
+  var date = monthlyReportDisplayDate(row && row.date);
+  var day = row && row.dayName ? String(row.dayName) : '';
+  return day ? date + ' ' + day : date;
+}
+
 function monthlyReportRemovedKey(ctx, bookingId) {
   return monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'removed');
 }
@@ -7171,6 +7177,108 @@ function restoreMonthlyReportShows() {
   delete _monthlyReportRowsByContext[monthlyReportContextKey(ctx)];
   generateMonthlyReportPreview(false);
   showToast('', 'Shows Restored', 'Removed shows are back in this report.');
+}
+
+function applyMonthlyReportRowDraft(row, ctx) {
+  if (!row) return row;
+  ctx = ctx || getMonthlyReportContext();
+  var draft = readMonthlyReportDraft();
+  ['reportDateLabel', 'venueName', 'teamName', 'bookedBy', 'timeRange'].forEach(function(field) {
+    var val = String(draft[monthlyReportDraftField(ctx.monthKey, ctx.type, row.id, field)] || '').trim();
+    if (val) row[field] = val;
+  });
+  row.reportDateLabel = row.reportDateLabel || monthlyReportDefaultDateLabel(row);
+  return row;
+}
+
+function ensureMonthlyReportEditModal() {
+  var modal = document.getElementById('monthlyReportEditModal');
+  if (modal) return modal;
+  modal = document.createElement('div');
+  modal.id = 'monthlyReportEditModal';
+  modal.className = 'monthly-report-edit-modal';
+  modal.innerHTML =
+    '<div class="monthly-report-edit-card" onclick="event.stopPropagation()">' +
+      '<button type="button" class="monthly-report-edit-close" onclick="closeMonthlyReportEditModal()">X</button>' +
+      '<div class="modal-eyebrow">Report Row</div>' +
+      '<h3>Edit this show</h3>' +
+      '<p>These changes affect only this monthly report and PDF. Original booking data stays unchanged.</p>' +
+      '<label>Date text<input id="monthlyReportEditDate" type="text" placeholder="23.05.2026 Saturday"></label>' +
+      '<label>Location<input id="monthlyReportEditVenue" type="text" placeholder="Location name"></label>' +
+      '<label>Band name<input id="monthlyReportEditTeam" type="text" placeholder="Band / team name"></label>' +
+      '<label>Booked by<input id="monthlyReportEditBookedBy" type="text" placeholder="Booking person"></label>' +
+      '<label>Time<input id="monthlyReportEditTime" type="text" placeholder="6:00 PM - 7:30 PM"></label>' +
+      '<label>Foot fall<input id="monthlyReportEditFootfall" type="number" min="0" step="1" placeholder="0"></label>' +
+      '<div class="monthly-report-edit-actions">' +
+        '<button type="button" class="btn secondary" onclick="closeMonthlyReportEditModal()">Cancel</button>' +
+        '<button type="button" class="btn primary" onclick="saveMonthlyReportShowEdit()">Save report edit</button>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', closeMonthlyReportEditModal);
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function getMonthlyReportRowById(bookingId) {
+  var id = String(bookingId || '');
+  var row = (_monthlyReportRows || []).find(function(item) { return String(item.id) === id; });
+  if (row) return row;
+  return buildMonthlyReportRows(getMonthlyReportContext()).find(function(item) { return String(item.id) === id; });
+}
+
+function editMonthlyReportShow(bookingId) {
+  if (!requireAdminPerm('reports', 'monthly report editing')) return;
+  var row = getMonthlyReportRowById(bookingId);
+  if (!row) {
+    showToast('', 'Show Not Found', 'Refresh the monthly report and try again.');
+    return;
+  }
+  var modal = ensureMonthlyReportEditModal();
+  modal.dataset.bookingId = String(bookingId || '');
+  document.getElementById('monthlyReportEditDate').value = row.reportDateLabel || monthlyReportDefaultDateLabel(row);
+  document.getElementById('monthlyReportEditVenue').value = row.venueName || '';
+  document.getElementById('monthlyReportEditTeam').value = row.teamName || '';
+  document.getElementById('monthlyReportEditBookedBy').value = row.bookedBy || '';
+  document.getElementById('monthlyReportEditTime').value = row.timeRange || '';
+  document.getElementById('monthlyReportEditFootfall').value = row.footfall || '';
+  modal.classList.add('show');
+}
+
+function closeMonthlyReportEditModal() {
+  var modal = document.getElementById('monthlyReportEditModal');
+  if (modal) modal.classList.remove('show');
+}
+
+function saveMonthlyReportShowEdit() {
+  var modal = document.getElementById('monthlyReportEditModal');
+  if (!modal) return;
+  var bookingId = modal.dataset.bookingId || '';
+  if (!bookingId) return;
+  var ctx = getMonthlyReportContext();
+  var draft = readMonthlyReportDraft();
+  [
+    ['reportDateLabel', 'monthlyReportEditDate'],
+    ['venueName', 'monthlyReportEditVenue'],
+    ['teamName', 'monthlyReportEditTeam'],
+    ['bookedBy', 'monthlyReportEditBookedBy'],
+    ['timeRange', 'monthlyReportEditTime']
+  ].forEach(function(pair) {
+    var el = document.getElementById(pair[1]);
+    var key = monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, pair[0]);
+    var value = el ? el.value.trim() : '';
+    if (value) draft[key] = value;
+    else delete draft[key];
+  });
+  var footfallEl = document.getElementById('monthlyReportEditFootfall');
+  var footfallKey = monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'footfall');
+  var footfall = Math.max(0, Math.round(Number(footfallEl && footfallEl.value) || 0));
+  if (footfall) draft[footfallKey] = String(footfall);
+  else delete draft[footfallKey];
+  writeMonthlyReportDraft(draft);
+  closeMonthlyReportEditModal();
+  delete _monthlyReportRowsByContext[monthlyReportContextKey(ctx)];
+  generateMonthlyReportPreview(false);
+  showToast('', 'Report Row Updated', 'This edit will appear in the monthly report and PDF.');
 }
 
 function monthlyReportVenueType(venue, booking) {
@@ -7237,6 +7345,7 @@ function buildMonthlyReportRows(ctx) {
       sortMs: bookingStartTimeMs(b)
     };
     row.footfall = monthlyReportFootfallFor(row, ctx);
+    applyMonthlyReportRowDraft(row, ctx);
     return row;
   });
   rows.sort(function(a, b) {
@@ -7360,7 +7469,7 @@ function renderMonthlyReportRows(ctx, rows) {
     _monthlyReportRows.map(function(row) {
       var photoLabel = row.hasProof ? 'Available' : 'Missing';
       return '<div class="monthly-report-row">' +
-        '<div><strong>' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + '</strong><span>' + otsEscapeHtml(row.dayName) + '</span><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove this show</button></div>' +
+        '<div><strong>' + otsEscapeHtml(row.reportDateLabel || monthlyReportDefaultDateLabel(row)) + '</strong><div class="monthly-report-row-actions"><button type="button" class="monthly-report-edit-btn" onclick="editMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Edit</button><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove this show</button></div></div>' +
         '<div><strong>' + otsEscapeHtml(row.venueName) + '</strong><span>' + otsEscapeHtml(row.venueType || 'Venue') + '</span></div>' +
         '<div><strong>' + otsEscapeHtml(row.teamName) + '</strong><span>Booked by ' + otsEscapeHtml(row.bookedBy || '-') + '</span></div>' +
         '<div>' + otsEscapeHtml(row.timeRange) + '</div>' +
@@ -7558,7 +7667,7 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
       logoHtml +
       weekHtml +
       '<div class="report-show-line">' +
-        '<div><strong>' + (idx + 1) + '. Date :</strong> <span>' + otsEscapeHtml(monthlyReportDisplayDate(row.date)) + ' ' + otsEscapeHtml(String(row.dayName).toUpperCase()) + '</span></div>' +
+        '<div><strong>' + (idx + 1) + '. Date :</strong> <span>' + otsEscapeHtml(row.reportDateLabel || monthlyReportDefaultDateLabel(row)) + '</span></div>' +
         '<div><strong>Location :</strong> <span>' + otsEscapeHtml(row.venueName) + '</span></div>' +
         '<div><strong>Band name :</strong> <span>' + otsEscapeHtml(row.teamName) + '</span></div>' +
         '<div><strong>Time :</strong> <span>' + otsEscapeHtml(row.timeRange) + '</span></div>' +
@@ -7610,7 +7719,7 @@ async function exportMonthlyReportPDF() {
   }
   var win = window.open('', '_blank');
   if (!win) {
-    showToast('', 'Popup Blocked', 'Chrome blocked the report window. Allow popups for this site once, then tap Print / Save PDF again.');
+    showToast('', 'Popup Blocked', 'Chrome blocked the report window. Allow popups for this site once, then tap Download PDF again.');
     return;
   }
   win.document.open();
