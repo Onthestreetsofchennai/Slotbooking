@@ -606,6 +606,23 @@ body.modal-lock{overflow:hidden;touch-action:none;}
 }
 .admin-booking-edit-modal .form-group{margin-bottom:.9rem;}
 .admin-booking-edit-modal textarea.form-input{resize:vertical;min-height:92px;}
+#adminBookingEditModal.show{
+  z-index:500000 !important;
+  pointer-events:auto !important;
+}
+#adminBookingEditModal.show .admin-booking-edit-modal{
+  position:relative;
+  z-index:2;
+  pointer-events:auto !important;
+  isolation:isolate;
+}
+#adminBookingEditModal.show .admin-booking-edit-modal input,
+#adminBookingEditModal.show .admin-booking-edit-modal select,
+#adminBookingEditModal.show .admin-booking-edit-modal textarea,
+#adminBookingEditModal.show .admin-booking-edit-modal button{
+  pointer-events:auto !important;
+  touch-action:manipulation;
+}
 .admin-access-dialog{
   width:min(92vw,760px);
   max-width:760px;
@@ -3423,6 +3440,7 @@ body.admin-booking-edit-open .csv-import-zone,
 body.admin-booking-edit-open .member-phone-import-zone,
 body.admin-booking-edit-open .photo-drop-zone,
 body.admin-booking-edit-open .btn-upload-photo{
+  display:none !important;
   pointer-events:none !important;
 }
 

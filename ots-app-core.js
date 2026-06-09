@@ -6295,6 +6295,31 @@ function formatCheckinTime(value) {
 var _adminBookingEditId = null;
 var _adminBookingEditMode = 'edit';
 
+function suspendAdminBookingEditFileInputs(enable) {
+  if (!enable) {
+    (_adminBookingEditSuspendedFiles || []).forEach(function(item) {
+      if (!item || !item.el) return;
+      item.el.disabled = item.disabled;
+      item.el.style.pointerEvents = item.pointerEvents;
+    });
+    _adminBookingEditSuspendedFiles = [];
+    return;
+  }
+  suspendAdminBookingEditFileInputs(false);
+  _adminBookingEditSuspendedFiles = Array.from(document.querySelectorAll('input[type="file"]')).map(function(el) {
+    var item = {
+      el: el,
+      disabled: !!el.disabled,
+      pointerEvents: el.style.pointerEvents || ''
+    };
+    if (!el.closest('#adminBookingEditModal')) {
+      el.disabled = true;
+      el.style.pointerEvents = 'none';
+    }
+    return item;
+  });
+}
+
 function _setAdminBookingEditError(message) {
   var el = document.getElementById('abe-err');
   if (!el) return;
@@ -6383,6 +6408,7 @@ function openAdminBookingEdit(id, event) {
   document.getElementById('abe-status').value = b.status || 'pending';
   document.getElementById('abe-notes').value = b.notes || '';
   _setAdminBookingEditError('');
+  suspendAdminBookingEditFileInputs(true);
   try { document.body.classList.add('modal-lock', 'admin-booking-edit-open'); } catch(e) {}
   modal.classList.add('show');
   setTimeout(function(){
@@ -6412,6 +6438,7 @@ function openAdminEmergencyCredit() {
   document.getElementById('abe-status').value = 'confirmed';
   document.getElementById('abe-notes').value = 'Emergency admin show credit';
   _setAdminBookingEditError('');
+  suspendAdminBookingEditFileInputs(true);
   try { document.body.classList.add('modal-lock', 'admin-booking-edit-open'); } catch(e) {}
   modal.classList.add('show');
 }
@@ -6430,6 +6457,7 @@ function closeAdminBookingEdit() {
   var modal = document.getElementById('adminBookingEditModal');
   if (modal) modal.classList.remove('show');
   try { document.body.classList.remove('modal-lock', 'admin-booking-edit-open'); } catch(e) {}
+  suspendAdminBookingEditFileInputs(false);
   _adminBookingEditId = null;
 }
 
@@ -6922,10 +6950,45 @@ var _monthlyReportLoadFailedMonthKey = '';
 var _monthlyReportRefreshPromise = null;
 var _monthlyReportLastGoodRows = [];
 var _monthlyReportLastGoodContextKey = '';
+var _monthlyReportRowsByContext = {};
+var _adminBookingEditSuspendedFiles = [];
 
 function monthlyReportContextKey(ctx) {
   ctx = ctx || getMonthlyReportContext();
   return String(ctx.monthKey || '') + '|' + String(ctx.type || 'all');
+}
+
+function cacheMonthlyReportRows(ctx, rows) {
+  var key = monthlyReportContextKey(ctx);
+  rows = (rows || []).slice();
+  if (!key || !rows.length) return;
+  _monthlyReportRowsByContext[key] = rows;
+  _monthlyReportLastGoodRows = rows.slice();
+  _monthlyReportLastGoodContextKey = key;
+}
+
+function getCachedMonthlyReportRows(ctx) {
+  var key = monthlyReportContextKey(ctx);
+  var rows = _monthlyReportRowsByContext[key];
+  return rows && rows.length ? rows.slice() : [];
+}
+
+function getCurrentMonthlyReportRows(ctx) {
+  var key = monthlyReportContextKey(ctx);
+  if (_monthlyReportRows.length && _monthlyReportLastContextKey === key) {
+    return _monthlyReportRows.slice();
+  }
+  return getCachedMonthlyReportRows(ctx);
+}
+
+function countCachedReportRowsForMonth(monthKey) {
+  var total = 0;
+  Object.keys(_monthlyReportRowsByContext || {}).forEach(function(key) {
+    if (key.indexOf(String(monthKey || '') + '|') === 0) {
+      total += (_monthlyReportRowsByContext[key] || []).length;
+    }
+  });
+  return total;
 }
 
 function getMonthlyReportMonthKeyForLoad() {
@@ -6949,8 +7012,9 @@ function mergeMonthlyReportBookings(mappedBookings, monthKey, options) {
   mappedBookings = mappedBookings || [];
   options = options || {};
   var cachedCount = countCachedBookingsForMonth(monthKey);
-  if (!mappedBookings.length && cachedCount && !options.allowEmptyReplace) {
-    console.warn('[OTS] monthly report empty refresh ignored for ' + monthKey + '; keeping ' + cachedCount + ' cached booking(s).');
+  var cachedReportCount = countCachedReportRowsForMonth(monthKey);
+  if (!mappedBookings.length && (cachedCount || cachedReportCount) && !options.allowEmptyReplace) {
+    console.warn('[OTS] monthly report empty refresh ignored for ' + monthKey + '; keeping cached report data.');
     _monthlyReportLoadFailedMonthKey = monthKey;
     return false;
   }
@@ -7211,6 +7275,7 @@ function setMonthlyReportFootfall(bookingId, value) {
   _monthlyReportRows.forEach(function(row) {
     if (String(row.id) === String(bookingId)) row.footfall = n;
   });
+  if (_monthlyReportRows.length) cacheMonthlyReportRows(ctx, _monthlyReportRows);
   renderMonthlyReportSummary(ctx, _monthlyReportRows);
 }
 
@@ -7228,66 +7293,18 @@ function showMonthlyReportRefreshingNotice(message) {
   if (warnings) warnings.innerHTML = '<div class="ok">' + otsEscapeHtml(message || 'Refreshing live report data...') + '</div>';
 }
 
-function generateMonthlyReportPreview(allowRefresh) {
+function renderMonthlyReportRows(ctx, rows) {
   var preview = document.getElementById('monthlyReportPreview');
   if (!preview) return;
-  initMonthlyReportControls();
-  var initialCtx = getMonthlyReportContext();
-  syncMonthlyReportTitle(initialCtx);
-  initialCtx = getMonthlyReportContext();
-  var contextKey = monthlyReportContextKey(initialCtx);
-  if (_adminDataLoading && currentAdminTab === 'reports') {
-    if (_monthlyReportRows.length && _monthlyReportLastContextKey === contextKey) {
-      showMonthlyReportRefreshingNotice('Refreshing live report data...');
-    } else {
-      renderMonthlyReportLoading('Loading live report data...');
-    }
-    return;
-  }
-  if (adminLoggedIn && currentAdminTab === 'reports' && _monthlyReportLoadedMonthKey !== initialCtx.monthKey && _monthlyReportLoadFailedMonthKey !== initialCtx.monthKey) {
-    if (_monthlyReportRows.length && _monthlyReportLastContextKey === contextKey) {
-      showMonthlyReportRefreshingNotice('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
-    } else {
-      renderMonthlyReportLoading('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
-    }
-    if (!_monthlyReportRefreshPromise) {
-      _monthlyReportRefreshPromise = refreshAdmin()
-        .then(function(){ generateMonthlyReportPreview(false); })
-        .catch(function(){ generateMonthlyReportPreview(false); })
-        .finally(function(){ _monthlyReportRefreshPromise = null; });
-    }
-    return;
-  }
-  if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !_adminDataLoading) {
-    if (_monthlyReportRows.length && _monthlyReportLastContextKey === contextKey) {
-      showMonthlyReportRefreshingNotice('Refreshing live report data...');
-    } else {
-      renderMonthlyReportLoading('Loading report data...');
-    }
-    _monthlyReportRefreshPromise = refreshAdmin()
-      .then(function(){ generateMonthlyReportPreview(false); })
-      .catch(function(){ generateMonthlyReportPreview(false); })
-      .finally(function(){ _monthlyReportRefreshPromise = null; });
-    return;
-  }
-  var ctx = initialCtx;
-  var nextRows = buildMonthlyReportRows(ctx);
-  if (!nextRows.length && _monthlyReportLastGoodRows.length && _monthlyReportLastGoodContextKey === contextKey) {
-    _monthlyReportRows = _monthlyReportLastGoodRows.slice();
-    _monthlyReportLastContextKey = contextKey;
-    renderMonthlyReportSummary(ctx, _monthlyReportRows);
-    showMonthlyReportRefreshingNotice('Live refresh returned empty once, so the last loaded report data is kept. Tap Refresh Preview again if you intentionally cleared this month.');
-    return;
-  }
-  _monthlyReportRows = nextRows;
+  rows = rows || [];
+  _monthlyReportRows = rows.slice();
   _monthlyReportLastContextKey = monthlyReportContextKey(ctx);
   renderMonthlyReportSummary(ctx, _monthlyReportRows);
   if (!_monthlyReportRows.length) {
     preview.innerHTML = '<div class="table-empty">No confirmed shows found for this report.</div>';
     return;
   }
-  _monthlyReportLastGoodRows = _monthlyReportRows.slice();
-  _monthlyReportLastGoodContextKey = _monthlyReportLastContextKey;
+  cacheMonthlyReportRows(ctx, _monthlyReportRows);
   preview.innerHTML =
     '<div class="monthly-report-table-head">' +
       '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div>' +
@@ -7303,6 +7320,62 @@ function generateMonthlyReportPreview(allowRefresh) {
         '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span></div>' +
       '</div>';
     }).join('');
+}
+
+function generateMonthlyReportPreview(allowRefresh) {
+  var preview = document.getElementById('monthlyReportPreview');
+  if (!preview) return;
+  initMonthlyReportControls();
+  var initialCtx = getMonthlyReportContext();
+  syncMonthlyReportTitle(initialCtx);
+  initialCtx = getMonthlyReportContext();
+  var contextKey = monthlyReportContextKey(initialCtx);
+  var cachedRows = getCurrentMonthlyReportRows(initialCtx);
+  if (_adminDataLoading && currentAdminTab === 'reports') {
+    if (cachedRows.length) {
+      renderMonthlyReportRows(initialCtx, cachedRows);
+      showMonthlyReportRefreshingNotice('Refreshing live report data...');
+    } else {
+      renderMonthlyReportLoading('Loading live report data...');
+    }
+    return;
+  }
+  if (adminLoggedIn && currentAdminTab === 'reports' && _monthlyReportLoadedMonthKey !== initialCtx.monthKey && _monthlyReportLoadFailedMonthKey !== initialCtx.monthKey) {
+    if (cachedRows.length) {
+      renderMonthlyReportRows(initialCtx, cachedRows);
+      showMonthlyReportRefreshingNotice('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
+    } else {
+      renderMonthlyReportLoading('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
+    }
+    if (!_monthlyReportRefreshPromise) {
+      _monthlyReportRefreshPromise = refreshAdmin()
+        .then(function(){ generateMonthlyReportPreview(false); })
+        .catch(function(){ generateMonthlyReportPreview(false); })
+        .finally(function(){ _monthlyReportRefreshPromise = null; });
+    }
+    return;
+  }
+  if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !_adminDataLoading) {
+    if (cachedRows.length) {
+      renderMonthlyReportRows(initialCtx, cachedRows);
+      showMonthlyReportRefreshingNotice('Refreshing live report data...');
+    } else {
+      renderMonthlyReportLoading('Loading report data...');
+    }
+    _monthlyReportRefreshPromise = refreshAdmin()
+      .then(function(){ generateMonthlyReportPreview(false); })
+      .catch(function(){ generateMonthlyReportPreview(false); })
+      .finally(function(){ _monthlyReportRefreshPromise = null; });
+    return;
+  }
+  var ctx = initialCtx;
+  var nextRows = buildMonthlyReportRows(ctx);
+  if (!nextRows.length && cachedRows.length) {
+    renderMonthlyReportRows(ctx, cachedRows);
+    showMonthlyReportRefreshingNotice('Live refresh returned empty once, so the last loaded report data is kept. Tap Refresh Preview again if you intentionally cleared this month.');
+    return;
+  }
+  renderMonthlyReportRows(ctx, nextRows);
 }
 
 async function hydrateMonthlyReportPhotos(rows) {
@@ -7393,7 +7466,11 @@ async function exportMonthlyReportPDF() {
   if (!requireAdminPerm('reports', 'monthly report export')) return;
   initMonthlyReportControls();
   var ctx = getMonthlyReportContext();
-  var rows = buildMonthlyReportRows(ctx);
+  var rows = getCurrentMonthlyReportRows(ctx);
+  if (!rows.length) rows = buildMonthlyReportRows(ctx);
+  if (rows.length) {
+    renderMonthlyReportRows(ctx, rows);
+  }
   if (!rows.length) {
     showToast('', 'No Report Data', 'No confirmed shows found for this month and type.');
     return;
