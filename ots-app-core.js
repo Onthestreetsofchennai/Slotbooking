@@ -7728,8 +7728,8 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
     '</body></html>';
 }
 
-async function exportMonthlyReportPDF() {
-  if (!requireAdminPerm('reports', 'monthly report export')) return;
+async function openMonthlyReportWindow(autoPrint) {
+  if (!requireAdminPerm('reports', autoPrint ? 'monthly report download' : 'monthly report view')) return;
   initMonthlyReportControls();
   var ctx = getMonthlyReportContext();
   var rows = getCurrentMonthlyReportRows(ctx);
@@ -7743,13 +7743,13 @@ async function exportMonthlyReportPDF() {
   }
   var win = window.open('', '_blank');
   if (!win) {
-    showToast('', 'Popup Blocked', 'Chrome blocked the report window. Allow popups for this site once, then tap Download PDF again.');
+    showToast('', 'Popup Blocked', 'Chrome blocked the report window. Allow popups for this site once, then tap ' + (autoPrint ? 'Download Report' : 'View Report') + ' again.');
     return;
   }
   win.document.open();
-  win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Preparing Report</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#12101f;color:#fff;font-family:Arial,sans-serif;text-align:center}.box{max-width:520px;padding:32px}.label{color:#ff8a35;letter-spacing:.16em;text-transform:uppercase;font-size:13px;font-weight:800}.title{font-size:28px;font-weight:800;margin:14px 0 8px}.sub{color:#b7b1c9;font-size:15px;line-height:1.5}</style></head><body><div class="box"><div class="label">OTS Report</div><div class="title">Preparing monthly report...</div><div class="sub">Loading proof photos. The print window will open automatically.</div></div></body></html>');
+  win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Preparing Report</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#12101f;color:#fff;font-family:Arial,sans-serif;text-align:center}.box{max-width:520px;padding:32px}.label{color:#ff8a35;letter-spacing:.16em;text-transform:uppercase;font-size:13px;font-weight:800}.title{font-size:28px;font-weight:800;margin:14px 0 8px}.sub{color:#b7b1c9;font-size:15px;line-height:1.5}</style></head><body><div class="box"><div class="label">OTS Report</div><div class="title">Preparing monthly report...</div><div class="sub">' + (autoPrint ? 'Loading proof photos. Chrome will open the PDF save window automatically.' : 'Loading proof photos. The report preview will open here.') + '</div></div></body></html>');
   win.document.close();
-  showToast('', 'Preparing Report', 'Loading proof photos for the PDF preview...');
+  showToast('', 'Preparing Report', autoPrint ? 'Chrome will open the PDF save window after photos load.' : 'Opening report preview after photos load.');
   try {
     await hydrateMonthlyReportPhotos(rows);
     await normalizeMonthlyReportPhotos(rows);
@@ -7767,10 +7767,26 @@ async function exportMonthlyReportPDF() {
     console.error('[OTS] monthly report export:', e);
     return;
   }
-  setTimeout(function() {
-    try { win.focus(); win.print(); } catch(e) {}
-  }, 900);
-  logAdminAction('monthly_report_export', ctx.title + ' / ' + rows.length + ' shows').catch(function(){});
+  if (autoPrint) {
+    setTimeout(function() {
+      try { win.focus(); win.print(); } catch(e) {}
+    }, 900);
+  } else {
+    try { win.focus(); } catch(e) {}
+  }
+  logAdminAction(autoPrint ? 'monthly_report_download' : 'monthly_report_view', ctx.title + ' / ' + rows.length + ' shows').catch(function(){});
+}
+
+async function viewMonthlyReport() {
+  return openMonthlyReportWindow(false);
+}
+
+async function downloadMonthlyReportPDF() {
+  return openMonthlyReportWindow(true);
+}
+
+async function exportMonthlyReportPDF() {
+  return downloadMonthlyReportPDF();
 }
 
 // =======================================
