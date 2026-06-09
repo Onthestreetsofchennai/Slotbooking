@@ -7134,6 +7134,13 @@ function monthlyReportDefaultDateLabel(row) {
   return day ? date + ' ' + day : date;
 }
 
+function monthlyReportNormalizeRotation(value) {
+  var n = Math.round(Number(value) || 0);
+  n = ((n % 360) + 360) % 360;
+  if ([90, 180, 270].indexOf(n) > -1) return n;
+  return 0;
+}
+
 function monthlyReportRemovedKey(ctx, bookingId) {
   return monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'removed');
 }
@@ -7188,6 +7195,7 @@ function applyMonthlyReportRowDraft(row, ctx) {
     if (val) row[field] = val;
   });
   row.reportDateLabel = row.reportDateLabel || monthlyReportDefaultDateLabel(row);
+  row.photoRotate = monthlyReportNormalizeRotation(draft[monthlyReportDraftField(ctx.monthKey, ctx.type, row.id, 'photoRotate')]);
   return row;
 }
 
@@ -7209,6 +7217,12 @@ function ensureMonthlyReportEditModal() {
       '<label>Booked by<input id="monthlyReportEditBookedBy" type="text" placeholder="Booking person"></label>' +
       '<label>Time<input id="monthlyReportEditTime" type="text" placeholder="6:00 PM - 7:30 PM"></label>' +
       '<label>Foot fall<input id="monthlyReportEditFootfall" type="number" min="0" step="1" placeholder="0"></label>' +
+      '<label>Photo rotation<select id="monthlyReportEditPhotoRotate">' +
+        '<option value="0">Straight / Auto</option>' +
+        '<option value="90">Rotate right 90</option>' +
+        '<option value="180">Rotate 180</option>' +
+        '<option value="270">Rotate left 90</option>' +
+      '</select></label>' +
       '<div class="monthly-report-edit-actions">' +
         '<button type="button" class="btn secondary" onclick="closeMonthlyReportEditModal()">Cancel</button>' +
         '<button type="button" class="btn primary" onclick="saveMonthlyReportShowEdit()">Save report edit</button>' +
@@ -7241,6 +7255,7 @@ function editMonthlyReportShow(bookingId) {
   document.getElementById('monthlyReportEditBookedBy').value = row.bookedBy || '';
   document.getElementById('monthlyReportEditTime').value = row.timeRange || '';
   document.getElementById('monthlyReportEditFootfall').value = row.footfall || '';
+  document.getElementById('monthlyReportEditPhotoRotate').value = String(monthlyReportNormalizeRotation(row.photoRotate));
   modal.classList.add('show');
 }
 
@@ -7274,6 +7289,11 @@ function saveMonthlyReportShowEdit() {
   var footfall = Math.max(0, Math.round(Number(footfallEl && footfallEl.value) || 0));
   if (footfall) draft[footfallKey] = String(footfall);
   else delete draft[footfallKey];
+  var rotateEl = document.getElementById('monthlyReportEditPhotoRotate');
+  var rotateKey = monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'photoRotate');
+  var rotate = monthlyReportNormalizeRotation(rotateEl && rotateEl.value);
+  if (rotate) draft[rotateKey] = String(rotate);
+  else delete draft[rotateKey];
   writeMonthlyReportDraft(draft);
   closeMonthlyReportEditModal();
   delete _monthlyReportRowsByContext[monthlyReportContextKey(ctx)];
@@ -7474,7 +7494,7 @@ function renderMonthlyReportRows(ctx, rows) {
         '<div><strong>' + otsEscapeHtml(row.teamName) + '</strong><span>Booked by ' + otsEscapeHtml(row.bookedBy || '-') + '</span></div>' +
         '<div>' + otsEscapeHtml(row.timeRange) + '</div>' +
         '<div><input type="number" min="0" step="1" value="' + otsEscapeHtml(row.footfall || '') + '" placeholder="0" oninput="setMonthlyReportFootfall(\'' + otsJsString(row.id) + '\', this.value)"></div>' +
-        '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span></div>' +
+        '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span>' + (row.photoRotate ? '<span>Rotate ' + row.photoRotate + '</span>' : '') + '</div>' +
       '</div>';
     }).join('');
 }
@@ -7600,26 +7620,30 @@ function monthlyReportJpegOrientationFromBuffer(buffer) {
   return 1;
 }
 
-async function normalizeMonthlyReportPhoto(url) {
+async function normalizeMonthlyReportPhoto(url, manualRotation) {
   try {
+    manualRotation = monthlyReportNormalizeRotation(manualRotation);
     if (!url || typeof createImageBitmap !== 'function') return url;
     var blob = await monthlyReportPhotoBlob(url);
-    if (!blob || !/^image\/jpe?g$/i.test(blob.type || '')) return url;
-    var orientation = monthlyReportJpegOrientationFromBuffer(await blob.arrayBuffer());
-    if ([3, 6, 8].indexOf(orientation) === -1) return url;
-    var bitmap = await createImageBitmap(blob, { imageOrientation:'none' });
-    var swap = orientation === 6 || orientation === 8;
+    if (!blob) return url;
+    var isJpeg = /^image\/jpe?g$/i.test(blob.type || '');
+    var orientation = isJpeg ? monthlyReportJpegOrientationFromBuffer(await blob.arrayBuffer()) : 1;
+    if ([3, 6, 8].indexOf(orientation) === -1 && !manualRotation) return url;
+    var bitmap = isJpeg ? await createImageBitmap(blob, { imageOrientation:'none' }) : await createImageBitmap(blob);
+    var exifRotation = orientation === 3 ? 180 : orientation === 6 ? 90 : orientation === 8 ? 270 : 0;
+    var totalRotation = monthlyReportNormalizeRotation(exifRotation + manualRotation);
+    var swap = totalRotation === 90 || totalRotation === 270;
     var canvas = document.createElement('canvas');
     canvas.width = swap ? bitmap.height : bitmap.width;
     canvas.height = swap ? bitmap.width : bitmap.height;
     var ctx = canvas.getContext('2d');
-    if (orientation === 3) {
+    if (totalRotation === 180) {
       ctx.translate(canvas.width, canvas.height);
       ctx.rotate(Math.PI);
-    } else if (orientation === 6) {
+    } else if (totalRotation === 90) {
       ctx.translate(canvas.width, 0);
       ctx.rotate(Math.PI / 2);
-    } else if (orientation === 8) {
+    } else if (totalRotation === 270) {
       ctx.translate(0, canvas.height);
       ctx.rotate(-Math.PI / 2);
     }
@@ -7634,7 +7658,7 @@ async function normalizeMonthlyReportPhoto(url) {
 
 async function normalizeMonthlyReportPhotos(rows) {
   for (var i = 0; i < rows.length; i++) {
-    if (rows[i] && rows[i].photoUrl) rows[i].photoUrl = await normalizeMonthlyReportPhoto(rows[i].photoUrl);
+    if (rows[i] && rows[i].photoUrl) rows[i].photoUrl = await normalizeMonthlyReportPhoto(rows[i].photoUrl, rows[i].photoRotate);
   }
 }
 

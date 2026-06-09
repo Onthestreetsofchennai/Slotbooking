@@ -5236,7 +5236,8 @@ body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
   text-transform:uppercase;
   margin:.8rem 0 0;
 }
-.monthly-report-edit-card input{
+.monthly-report-edit-card input,
+.monthly-report-edit-card select{
   width:100%;
   margin-top:.35rem;
   border:1px solid var(--border);
@@ -5246,6 +5247,12 @@ body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
   padding:.75rem .8rem;
   font:inherit;
   letter-spacing:0;
+}
+.monthly-report-edit-card select{
+  appearance:none;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--purple) 50%) right .9rem center/7px 7px no-repeat,
+    rgba(255,255,255,.055);
 }
 .monthly-report-edit-close{
   position:absolute;
