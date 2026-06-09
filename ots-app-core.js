@@ -4640,11 +4640,15 @@ function refreshAdmin(attempt) {
         }
         if (key === 'reportBookings') {
           var mappedReportBookings = mapBookingRows(result.value || []);
-          if (!mappedReportBookings.length && attempt < 2) {
+          var cachedReportCount = countCachedBookingsForMonth(task.monthKey);
+          if (!mappedReportBookings.length && cachedReportCount) {
+            needsRetry = true;
+            _monthlyReportLoadFailedMonthKey = task.monthKey || '';
+          } else if (!mappedReportBookings.length && attempt < 2) {
             needsRetry = true;
           } else {
-            mergeMonthlyReportBookings(mappedReportBookings, task.monthKey);
-            _monthlyReportLoadedMonthKey = task.monthKey || '';
+            var mergedReportRows = mergeMonthlyReportBookings(mappedReportBookings, task.monthKey);
+            if (mergedReportRows !== false) _monthlyReportLoadedMonthKey = task.monthKey || '';
           }
         }
         gotAnyLiveData = true;
@@ -6302,6 +6306,16 @@ function _bookingTypeOptionsValue(value) {
   var typeEl = document.getElementById('abe-type');
   if (!typeEl) return;
   var val = String(value || '');
+  if (typeEl.tagName !== 'SELECT') {
+    typeEl.value = val;
+    var list = document.getElementById('abe-type-options');
+    if (list && val && !Array.from(list.options || []).some(function(o){ return o.value === val; })) {
+      var opt = document.createElement('option');
+      opt.value = val;
+      list.appendChild(opt);
+    }
+    return;
+  }
   var found = false;
   Array.from(typeEl.options).forEach(function(o){ if (o.value === val || o.textContent === val) found = true; });
   if (!found && val) {
@@ -6480,21 +6494,8 @@ async function saveExistingBookingEdit(data) {
   var b = allBookings.find(function(x){ return x.id === _adminBookingEditId; });
   if (!b) throw new Error('Booking not found.');
   var oldStatus = b.status;
-  var updates = {
-    venue_id: data.venueId,
-    venue: data.venue,
-    date: data.date,
-    type: data.type,
-    name: data.name,
-    booked_by: data.bookedBy,
-    phone: data.phone,
-    email: data.email,
-    notes: data.notes,
-    visibility: data.visibility,
-    status: data.status
-  };
-  await dbPatch('bookings', b.id, updates);
-  Object.assign(b, {
+  var saved = await updateBookingDetailsAndReadBack(b.id, data, b.name);
+  Object.assign(b, saved || {
     venueId: data.venueId,
     venue: data.venue,
     date: data.date,
@@ -6530,6 +6531,47 @@ async function saveExistingBookingEdit(data) {
   });
   logAdminAction('edit_booking', data.name + ' @ ' + data.venue + ' #' + b.id).catch(function(){});
   showToast('', 'Booking Updated', 'Changes are saved and synced.');
+}
+
+async function updateBookingDetailsAndReadBack(id, data, oldTeamName) {
+  var updateSql =
+    'UPDATE bookings SET venue_id=$2, venue=$3, date=$4, type=$5, name=$6, booked_by=$7, phone=$8, email=$9, notes=$10, visibility=$11, status=$12 WHERE id=$1';
+  var params = [
+    id,
+    data.venueId,
+    data.venue,
+    data.date,
+    data.type,
+    data.name,
+    data.bookedBy,
+    data.phone,
+    data.email,
+    data.notes,
+    data.visibility,
+    data.status
+  ];
+  await neonSQL(updateSql, params);
+  if (oldTeamName && oldTeamName !== data.name) {
+    neonSQL(
+      "UPDATE claims SET member_name=$2 WHERE booking_id=$1 AND COALESCE(member_name,'')=$3",
+      [id, data.name, oldTeamName]
+    ).catch(function(){});
+  }
+  var rows = await neonSQL(
+    'SELECT id, venue_id, venue, date, type, name, booked_by, phone, email, notes, visibility, status, created_at,' +
+    LIGHT_PROOF_SQL + ',proof_claimed,checkin_at,checkin_lat,checkin_lng,checkin_accuracy,checkin_map_url,performers FROM bookings WHERE id=$1 LIMIT 1',
+    [id]
+  );
+  if (!rows || !rows.length) throw new Error('Booking save failed: row was not found after update.');
+  var saved = mapBookingRows(rows)[0];
+  var mismatches = [];
+  if (String(saved.type || '') !== String(data.type || '')) mismatches.push('type');
+  if (String(saved.name || '') !== String(data.name || '')) mismatches.push('team name');
+  if (String(saved.bookedBy || '') !== String(data.bookedBy || '')) mismatches.push('booked by');
+  if (mismatches.length) {
+    throw new Error('Booking save did not update ' + mismatches.join(', ') + '. Please refresh and try again.');
+  }
+  return saved;
 }
 
 async function createEmergencyShowCredit(data) {
@@ -6878,6 +6920,8 @@ var _monthlyReportLastContextKey = '';
 var _monthlyReportLoadedMonthKey = '';
 var _monthlyReportLoadFailedMonthKey = '';
 var _monthlyReportRefreshPromise = null;
+var _monthlyReportLastGoodRows = [];
+var _monthlyReportLastGoodContextKey = '';
 
 function monthlyReportContextKey(ctx) {
   ctx = ctx || getMonthlyReportContext();
@@ -6895,12 +6939,26 @@ function bookingBelongsToMonth(booking, monthKey) {
   return !!(date && date.slice(0, 7) === monthKey);
 }
 
-function mergeMonthlyReportBookings(mappedBookings, monthKey) {
+function countCachedBookingsForMonth(monthKey) {
+  if (!monthKey) return 0;
+  return (allBookings || []).filter(function(b) { return bookingBelongsToMonth(b, monthKey); }).length;
+}
+
+function mergeMonthlyReportBookings(mappedBookings, monthKey, options) {
   if (!monthKey) return;
+  mappedBookings = mappedBookings || [];
+  options = options || {};
+  var cachedCount = countCachedBookingsForMonth(monthKey);
+  if (!mappedBookings.length && cachedCount && !options.allowEmptyReplace) {
+    console.warn('[OTS] monthly report empty refresh ignored for ' + monthKey + '; keeping ' + cachedCount + ' cached booking(s).');
+    _monthlyReportLoadFailedMonthKey = monthKey;
+    return false;
+  }
   allBookings = (allBookings || []).filter(function(b) {
     return !bookingBelongsToMonth(b, monthKey);
-  }).concat(mappedBookings || []);
+  }).concat(mappedBookings);
   _monthlyReportLoadFailedMonthKey = '';
+  return true;
 }
 
 function localMonthKey(date) {
@@ -7213,13 +7271,23 @@ function generateMonthlyReportPreview(allowRefresh) {
     return;
   }
   var ctx = initialCtx;
-  _monthlyReportRows = buildMonthlyReportRows(ctx);
+  var nextRows = buildMonthlyReportRows(ctx);
+  if (!nextRows.length && _monthlyReportLastGoodRows.length && _monthlyReportLastGoodContextKey === contextKey) {
+    _monthlyReportRows = _monthlyReportLastGoodRows.slice();
+    _monthlyReportLastContextKey = contextKey;
+    renderMonthlyReportSummary(ctx, _monthlyReportRows);
+    showMonthlyReportRefreshingNotice('Live refresh returned empty once, so the last loaded report data is kept. Tap Refresh Preview again if you intentionally cleared this month.');
+    return;
+  }
+  _monthlyReportRows = nextRows;
   _monthlyReportLastContextKey = monthlyReportContextKey(ctx);
   renderMonthlyReportSummary(ctx, _monthlyReportRows);
   if (!_monthlyReportRows.length) {
     preview.innerHTML = '<div class="table-empty">No confirmed shows found for this report.</div>';
     return;
   }
+  _monthlyReportLastGoodRows = _monthlyReportRows.slice();
+  _monthlyReportLastGoodContextKey = _monthlyReportLastContextKey;
   preview.innerHTML =
     '<div class="monthly-report-table-head">' +
       '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div>' +
@@ -7330,17 +7398,31 @@ async function exportMonthlyReportPDF() {
     showToast('', 'No Report Data', 'No confirmed shows found for this month and type.');
     return;
   }
-  showToast('', 'Preparing Report', 'Loading proof photos for the PDF preview...');
-  await hydrateMonthlyReportPhotos(rows);
-  var html = buildMonthlyReportPrintHtml(ctx, rows);
   var win = window.open('', '_blank');
   if (!win) {
-    showToast('', 'Popup Blocked', 'Please allow popups, then try Print / Save PDF again.');
+    showToast('', 'Popup Blocked', 'Chrome blocked the report window. Allow popups for this site once, then tap Print / Save PDF again.');
     return;
   }
   win.document.open();
-  win.document.write(html);
+  win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Preparing Report</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#12101f;color:#fff;font-family:Arial,sans-serif;text-align:center}.box{max-width:520px;padding:32px}.label{color:#ff8a35;letter-spacing:.16em;text-transform:uppercase;font-size:13px;font-weight:800}.title{font-size:28px;font-weight:800;margin:14px 0 8px}.sub{color:#b7b1c9;font-size:15px;line-height:1.5}</style></head><body><div class="box"><div class="label">OTS Report</div><div class="title">Preparing monthly report...</div><div class="sub">Loading proof photos. The print window will open automatically.</div></div></body></html>');
   win.document.close();
+  showToast('', 'Preparing Report', 'Loading proof photos for the PDF preview...');
+  try {
+    await hydrateMonthlyReportPhotos(rows);
+    var html = buildMonthlyReportPrintHtml(ctx, rows);
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  } catch(e) {
+    try {
+      win.document.open();
+      win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Report Failed</title><style>body{font-family:Arial,sans-serif;padding:40px;color:#222}.err{color:#b42318;font-weight:700}</style></head><body><h1>Report could not be prepared</h1><p class="err">Please go back to the app and try again.</p></body></html>');
+      win.document.close();
+    } catch(_e) {}
+    showToast('', 'Report Failed', 'Could not prepare the PDF report. Please try again.');
+    console.error('[OTS] monthly report export:', e);
+    return;
+  }
   setTimeout(function() {
     try { win.focus(); win.print(); } catch(e) {}
   }, 900);
