@@ -544,6 +544,7 @@ async function loadClientErrorReports() {
 function renderClientErrorReports(rows) {
   var el = document.getElementById('clientErrorReportsList');
   if (!el) return;
+  var canEditErrors = hasAdminPerm('errors');
   if (!rows.length) {
     el.innerHTML = '<div class="table-empty"><span class="emoji"></span>No error reports found</div>';
     return;
@@ -560,7 +561,7 @@ function renderClientErrorReports(rows) {
       '</div>' +
       (r.stack ? '<div class="error-report-stack">' + esc(r.stack) + '</div>' : '') +
       '<div class="error-report-actions">' +
-        (r.handled ? '<span class="error-report-pill">reviewed</span>' : '<button class="filter-btn" onclick="markClientErrorHandled(' + esc(JSON.stringify(String(r.id || ''))) + ')">Mark Reviewed</button>') +
+        (r.handled ? '<span class="error-report-pill">reviewed</span>' : (canEditErrors ? '<button class="filter-btn perm-errors-edit" onclick="markClientErrorHandled(' + esc(JSON.stringify(String(r.id || ''))) + ')">Mark Reviewed</button>' : '<span class="error-report-pill">needs review</span>')) +
       '</div>' +
     '</div>';
   }).join('');
@@ -583,6 +584,7 @@ function formatDateTime(value) {
 }
 
 async function markClientErrorHandled(id) {
+  if (!requireAdminPerm('errors', 'error report review')) return;
   try {
     await neonSQL('UPDATE client_error_reports SET handled=true WHERE id=$1', [id]);
     loadClientErrorReports();
@@ -593,6 +595,7 @@ async function markClientErrorHandled(id) {
 }
 
 function testClientErrorReporting() {
+  if (!requireAdminPerm('errors', 'error report testing')) return;
   reportClientError('manual-test', new Error('Manual test report from admin panel'), { severity:'info' });
   showToast('', 'Error Reports', 'Test report sent. Refresh in a moment.');
   setTimeout(loadClientErrorReports, 1200);
@@ -4753,6 +4756,7 @@ function switchAdminTab(tab) {
 }
 
 function syncAdminUploadInputsForTab(tab) {
+  if (tab !== 'superadmin') setSuperAdminUploadLock(false);
   var uploadInputs = {
     csvFileInput: tab === 'import',
     photoFileInput: tab === 'photos',
@@ -4766,6 +4770,39 @@ function syncAdminUploadInputsForTab(tab) {
     el.disabled = !uploadInputs[id];
     el.style.pointerEvents = uploadInputs[id] ? '' : 'none';
   });
+  if (tab === 'superadmin') setSuperAdminUploadLock(true);
+}
+
+var _superAdminUploadLockActive = false;
+var _superAdminUploadLockedFiles = [];
+function setSuperAdminUploadLock(enable) {
+  if (!enable) {
+    if (!_superAdminUploadLockActive) return;
+    (_superAdminUploadLockedFiles || []).forEach(function(item) {
+      if (!item || !item.el) return;
+      item.el.disabled = item.disabled;
+      item.el.style.pointerEvents = item.pointerEvents;
+      item.el.style.display = item.display;
+    });
+    _superAdminUploadLockedFiles = [];
+    _superAdminUploadLockActive = false;
+    try { document.body.classList.remove('super-admin-upload-lock'); } catch(e) {}
+    return;
+  }
+  if (_superAdminUploadLockActive) return;
+  _superAdminUploadLockActive = true;
+  _superAdminUploadLockedFiles = Array.from(document.querySelectorAll('input[type="file"]')).map(function(el) {
+    var item = {
+      el: el,
+      disabled: !!el.disabled,
+      pointerEvents: el.style.pointerEvents || '',
+      display: el.style.display || ''
+    };
+    el.disabled = true;
+    el.style.pointerEvents = 'none';
+    return item;
+  });
+  try { document.body.classList.add('super-admin-upload-lock'); } catch(e) {}
 }
 
 // ========================================
@@ -7099,6 +7136,7 @@ function initMonthlyReportControls() {
 }
 
 function saveMonthlyReportTitleDraft() {
+  if (!hasAdminPerm('reports')) return;
   var ctx = getMonthlyReportContext();
   var titleEl = document.getElementById('monthlyReportTitle');
   var draft = readMonthlyReportDraft();
@@ -7292,6 +7330,10 @@ function closeMonthlyReportEditModal() {
 }
 
 function previewMonthlyReportPhoto(input) {
+  if (!requireAdminPerm('reports', 'monthly report photo upload')) {
+    if (input) input.value = '';
+    return;
+  }
   var file = input && input.files && input.files[0];
   var preview = document.getElementById('monthlyReportEditPhotoPreview');
   var status = document.getElementById('monthlyReportEditPhotoStatus');
@@ -7317,6 +7359,7 @@ function previewMonthlyReportPhoto(input) {
 }
 
 async function saveMonthlyReportShowEdit() {
+  if (!requireAdminPerm('reports', 'monthly report editing')) return;
   var modal = document.getElementById('monthlyReportEditModal');
   if (!modal) return;
   var bookingId = modal.dataset.bookingId || '';
@@ -7513,7 +7556,7 @@ function renderMonthlyReportSummary(ctx, rows) {
     if (s.missingFootfall) notes.push(s.missingFootfall + ' show(s) need footfall before the report looks complete.');
     if (s.missingPhotos) notes.push(s.missingPhotos + ' show(s) do not have proof photos yet.');
     var removedShows = monthlyReportRemovedCount(ctx);
-    if (removedShows) notes.push(removedShows + ' show(s) removed from this report. <button type="button" class="monthly-report-restore-btn" onclick="restoreMonthlyReportShows()">Restore removed shows</button>');
+    if (removedShows) notes.push(removedShows + ' show(s) removed from this report.' + (hasAdminPerm('reports') ? ' <button type="button" class="monthly-report-restore-btn" onclick="restoreMonthlyReportShows()">Restore removed shows</button>' : ''));
     var hiddenUncategorized = countMonthlyReportHiddenUncategorized(ctx);
     if (hiddenUncategorized) notes.push(hiddenUncategorized + ' old show(s) are hidden because their venue type is not set. Public is only visibility; set GCC/Metro/Foundation/Private in Venue Manager.');
     if (!rows.length) notes.push('No confirmed shows found for ' + otsEscapeHtml(ctx.typeLabel) + ' in ' + otsEscapeHtml(monthLabelFromKey(ctx.monthKey, false)) + '.');
@@ -7522,6 +7565,7 @@ function renderMonthlyReportSummary(ctx, rows) {
 }
 
 function setMonthlyReportFootfall(bookingId, value) {
+  if (!requireAdminPerm('reports', 'monthly report editing')) return;
   var ctx = getMonthlyReportContext();
   var draft = readMonthlyReportDraft();
   var key = monthlyReportDraftField(ctx.monthKey, ctx.type, bookingId, 'footfall');
@@ -7553,6 +7597,7 @@ function showMonthlyReportRefreshingNotice(message) {
 function renderMonthlyReportRows(ctx, rows) {
   var preview = document.getElementById('monthlyReportPreview');
   if (!preview) return;
+  var canEditReports = hasAdminPerm('reports');
   rows = rows || [];
   _monthlyReportRows = rows.slice();
   _monthlyReportLastContextKey = monthlyReportContextKey(ctx);
@@ -7568,12 +7613,15 @@ function renderMonthlyReportRows(ctx, rows) {
     '</div>' +
     _monthlyReportRows.map(function(row) {
       var photoLabel = row.hasProof ? 'Available' : 'Missing';
+      var rowActions = canEditReports
+        ? '<div class="monthly-report-row-actions"><button type="button" class="monthly-report-edit-btn" onclick="editMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Edit</button><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove this show</button></div>'
+        : '';
       return '<div class="monthly-report-row">' +
-        '<div><strong>' + otsEscapeHtml(row.reportDateLabel || monthlyReportDefaultDateLabel(row)) + '</strong><div class="monthly-report-row-actions"><button type="button" class="monthly-report-edit-btn" onclick="editMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Edit</button><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove this show</button></div></div>' +
+        '<div><strong>' + otsEscapeHtml(row.reportDateLabel || monthlyReportDefaultDateLabel(row)) + '</strong>' + rowActions + '</div>' +
         '<div><strong>' + otsEscapeHtml(row.venueName) + '</strong><span>' + otsEscapeHtml(row.venueType || 'Venue') + '</span></div>' +
         '<div><strong>' + otsEscapeHtml(row.teamName) + '</strong><span>Booked by ' + otsEscapeHtml(row.bookedBy || '-') + '</span></div>' +
         '<div>' + otsEscapeHtml(row.timeRange) + '</div>' +
-        '<div><input type="number" min="0" step="1" value="' + otsEscapeHtml(row.footfall || '') + '" placeholder="0" oninput="setMonthlyReportFootfall(\'' + otsJsString(row.id) + '\', this.value)"></div>' +
+        '<div><input type="number" min="0" step="1" value="' + otsEscapeHtml(row.footfall || '') + '" placeholder="0" oninput="setMonthlyReportFootfall(\'' + otsJsString(row.id) + '\', this.value)" ' + (canEditReports ? '' : 'disabled') + '></div>' +
         '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span>' + (row.photoRotate ? '<span>Rotate ' + row.photoRotate + '</span>' : '') + '</div>' +
       '</div>';
     }).join('');
@@ -8568,14 +8616,15 @@ var _createAdminSaving = false;
 var _adminAccessSaving = false;
 
 var ADMIN_PERMISSION_DEFS = [
-  { key:'slots',   label:'Slot approvals', desc:'Approve, reject and cancel slot bookings.' },
-  { key:'venues',  label:'Venues',         desc:'Add, edit, import, open/close and delete venues.' },
-  { key:'claims',  label:'Claims',         desc:'Approve or reject performance photo claims.' },
+  { key:'slots',   label:'Slot approvals', desc:'Approve/reject/cancel bookings and edit booking details.' },
+  { key:'venues',  label:'Venues',         desc:'Add, edit, import, classify, open/close and delete venues.' },
+  { key:'claims',  label:'Claims & show rescue', desc:'Approve claims, give special-show 1 point, emergency upload/show credit and restore follow-ups.' },
   { key:'photos',  label:'Front photos',   desc:'Upload, reorder, rename and remove home page photos.' },
-  { key:'ads',     label:'Community news', desc:'Create and manage event ads and news on the home page.' },
-  { key:'members', label:'Members',        desc:'Add/edit members, approve zones and activate accounts.' },
-  { key:'points',  label:'Points',         desc:'Manage monthly zone reports, CSV point imports, volunteer points and corrections.' },
-  { key:'reports', label:'Monthly reports', desc:'Generate and export GCC/Foundation monthly reports.' }
+  { key:'ads',     label:'Community news', desc:'Create and manage event ads, announcements and news images.' },
+  { key:'members', label:'Members & zones', desc:'Add/import/edit members, approve zones and activate accounts.' },
+  { key:'points',  label:'Points & zone reports', desc:'Manage monthly zone reports, CSV point imports, volunteer points and withdrawals.' },
+  { key:'reports', label:'Monthly reports', desc:'Edit report rows/photos/footfall, remove shows and view/download PDFs.' },
+  { key:'errors',  label:'Error reports',  desc:'Review technical bug reports and send test diagnostics.' }
 ];
 function parseAdminPermissions(value) {
   if (!value) return {};
@@ -8956,7 +9005,7 @@ function _renderSAAdmins() {
         : a.active
           ? '<button class="btn-reject" style="font-size:.72rem;padding:.2rem .5rem;" onclick="toggleAdminActive('+a.id+',false,\''+a.username+'\')">Disable</button>'
           : '<button class="btn-approve" style="font-size:.72rem;padding:.2rem .5rem;" onclick="toggleAdminActive('+a.id+',true,\''+a.username+'\')">Enable</button>';
-      var accessBtn = a.role === 'superadmin' ? '' : '<button class="btn-secondary" style="font-size:.7rem;padding:.22rem .55rem;margin-right:.35rem;" onclick="openAdminAccessModal('+a.id+',\''+otsJsString(a.username)+'\')">Access</button>';
+      var accessBtn = a.role === 'superadmin' ? '' : '<button class="btn-secondary" style="font-size:.7rem;padding:.22rem .55rem;margin-right:.35rem;" onclick="return handleAdminAccessClick(event,'+a.id+',\''+otsJsString(a.username)+'\')">Access</button>';
       return '<div class="sa-admin-row">' +
         '<div class="sa-admin-name">'+a.username+'</div>' +
         '<div class="sa-admin-role">'+roleLabel+'</div>' +
@@ -8965,6 +9014,32 @@ function _renderSAAdmins() {
         '<div class="sa-admin-actions">'+accessBtn+toggleBtn+'</div>' +
         '</div>';
     }).join('');
+}
+
+function handleCreateAdminClick(event) {
+  if (event) {
+    try {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    } catch(e) {}
+  }
+  setSuperAdminUploadLock(true);
+  openCreateAdminModal();
+  return false;
+}
+
+function handleAdminAccessClick(event, id, username) {
+  if (event) {
+    try {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    } catch(e) {}
+  }
+  setSuperAdminUploadLock(true);
+  openAdminAccessModal(id, username);
+  return false;
 }
 
 function _renderSALogs(logs) {
@@ -9127,6 +9202,7 @@ async function submitClearAllVenues() {
 
 function openCreateAdminModal() {
   if (currentAdminRole !== 'superadmin') return;
+  setSuperAdminUploadLock(true);
   _createAdminSaving = false;
   document.getElementById('ca-username').value = '';
   document.getElementById('ca-password').value = '';
@@ -9146,6 +9222,7 @@ function closeCreateAdminModal() {
   var modal = document.getElementById('createAdminModal');
   if (modal) modal.classList.remove('show');
   try { document.body.classList.remove('modal-lock'); } catch(e) {}
+  if (currentAdminTab !== 'superadmin') setSuperAdminUploadLock(false);
 }
 function syncCreateAdminPermissionUi() {
   var role = document.getElementById('ca-role') ? document.getElementById('ca-role').value : 'admin';
@@ -9187,6 +9264,7 @@ async function submitCreateAdmin() {
 }
 function openAdminAccessModal(id, username) {
   if (currentAdminRole !== 'superadmin') return;
+  setSuperAdminUploadLock(true);
   _adminAccessSaving = false;
   var admin = _saAdmins.find(function(a){ return Number(a.id) === Number(id); });
   if (!admin || admin.role === 'superadmin') return;
@@ -9208,6 +9286,7 @@ function closeAdminAccessModal() {
   var modal = document.getElementById('adminAccessModal');
   if (modal) modal.classList.remove('show');
   try { document.body.classList.remove('modal-lock'); } catch(e) {}
+  if (currentAdminTab !== 'superadmin') setSuperAdminUploadLock(false);
 }
 async function saveAdminAccess() {
   if (currentAdminRole !== 'superadmin') return;
@@ -9280,18 +9359,22 @@ function _applySuperAdminVisibility() {
 function _applyAdminPermissionUi() {
   if (!adminLoggedIn) return;
   [
+    {cls:'perm-claims-edit', key:'claims'},
     {cls:'perm-venues-edit', key:'venues'},
     {cls:'perm-photos-edit', key:'photos'},
     {cls:'perm-ads-edit', key:'ads'},
     {cls:'perm-members-edit', key:'members'},
     {cls:'perm-points-edit', key:'points'},
-    {cls:'perm-reports-edit', key:'reports'}
+    {cls:'perm-reports-edit', key:'reports'},
+    {cls:'perm-errors-edit', key:'errors'}
   ].forEach(function(item) {
     var allowed = hasAdminPerm(item.key);
     document.querySelectorAll('.' + item.cls).forEach(function(el) {
       el.style.display = allowed ? '' : 'none';
     });
   });
+  var reportTitle = document.getElementById('monthlyReportTitle');
+  if (reportTitle) reportTitle.disabled = !hasAdminPerm('reports');
 }
 
 function adminLogout() {

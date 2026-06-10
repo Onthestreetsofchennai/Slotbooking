@@ -682,7 +682,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
           <div style="font-size:.82rem;color:var(--muted);margin-top:.25rem;">Automatic technical reports from web app and Android app. Personal form details are not captured.</div>
         </div>
         <button class="filter-btn" onclick="loadClientErrorReports()">Refresh</button>
-        <button class="filter-btn" onclick="testClientErrorReporting()">Send Test</button>
+        <button class="filter-btn perm-errors-edit" onclick="testClientErrorReporting()">Send Test</button>
       </div>
       <div id="clientErrorReportsList" class="error-report-list">
         <div class="table-empty"><span class="emoji"></span>No error reports loaded</div>
@@ -1068,7 +1068,7 @@ window.OTS_ADMIN_ENTRY = './admin.html';
       <div class="panel" style="margin-bottom:2rem;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
           <div style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;">Admin Accounts</div>
-          <button class="btn-add-venue" onclick="openCreateAdminModal()">+ Add Admin</button>
+          <button class="btn-add-venue" onclick="return handleCreateAdminClick(event)">+ Add Admin</button>
         </div>
         <div id="sa-admins-list"><div style="color:var(--muted);font-size:.85rem;">Loading...</div></div>
       </div>

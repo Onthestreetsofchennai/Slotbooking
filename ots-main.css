@@ -3459,6 +3459,22 @@ body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
   user-select:text;
 }
 
+body.super-admin-upload-lock input[type=file],
+body.super-admin-upload-lock .csv-import-zone,
+body.super-admin-upload-lock .member-phone-import-zone,
+body.super-admin-upload-lock .photo-drop-zone,
+body.super-admin-upload-lock .btn-upload-photo,
+body.super-admin-upload-lock .community-ad-image-btn{
+  pointer-events:none !important;
+}
+
+body.super-admin-upload-lock #createAdminModal,
+body.super-admin-upload-lock #createAdminModal *,
+body.super-admin-upload-lock #adminAccessModal,
+body.super-admin-upload-lock #adminAccessModal *{
+  pointer-events:auto !important;
+}
+
 @media(max-width:700px){
   body.modal-lock{
     padding-bottom:0 !important;
