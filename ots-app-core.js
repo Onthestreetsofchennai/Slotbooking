@@ -4753,7 +4753,6 @@ function switchAdminTab(tab) {
 }
 
 function syncAdminUploadInputsForTab(tab) {
-  if (tab !== 'superadmin') setSuperAdminUploadLock(false);
   var uploadInputs = {
     csvFileInput: tab === 'import',
     photoFileInput: tab === 'photos',
@@ -4767,40 +4766,53 @@ function syncAdminUploadInputsForTab(tab) {
     el.disabled = !uploadInputs[id];
     el.style.pointerEvents = uploadInputs[id] ? '' : 'none';
   });
-  if (tab === 'superadmin') setSuperAdminUploadLock(true);
 }
 
-var _superAdminUploadLockActive = false;
-var _superAdminUploadLockedFiles = [];
+var _safeFileInputId = '';
+var _safeFileInputUntil = 0;
+
+function openFileInputSafely(id) {
+  var el = document.getElementById(id);
+  if (!el || el.disabled) return false;
+  _safeFileInputId = id;
+  _safeFileInputUntil = Date.now() + 1200;
+  try { el.click(); } catch(e) {}
+  setTimeout(function() {
+    if (_safeFileInputId === id && Date.now() >= _safeFileInputUntil) {
+      _safeFileInputId = '';
+      _safeFileInputUntil = 0;
+    }
+  }, 1300);
+  return false;
+}
+
+function isVisibleFileInputForActiveArea(input) {
+  if (!input || input.disabled) return false;
+  var style = window.getComputedStyle ? window.getComputedStyle(input) : null;
+  if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+  var rect = input.getBoundingClientRect ? input.getBoundingClientRect() : null;
+  if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+  var id = input.id || '';
+  if (id === 'csvFileInput') return currentAdminTab === 'import';
+  if (id === 'memberCsvInput') return currentAdminTab === 'members';
+  if (id === 'zone-csv-file') return currentAdminTab === 'points';
+  return false;
+}
+
+document.addEventListener('click', function(event) {
+  var target = event.target;
+  if (!target || !target.matches || !target.matches('input[type="file"]')) return;
+  var id = target.id || '';
+  var expected = id && _safeFileInputId === id && Date.now() <= _safeFileInputUntil;
+  if (expected || isVisibleFileInputForActiveArea(target)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+  return false;
+}, true);
+
 function setSuperAdminUploadLock(enable) {
-  if (!enable) {
-    if (!_superAdminUploadLockActive) return;
-    (_superAdminUploadLockedFiles || []).forEach(function(item) {
-      if (!item || !item.el) return;
-      item.el.disabled = item.disabled;
-      item.el.style.pointerEvents = item.pointerEvents;
-      item.el.style.display = item.display;
-    });
-    _superAdminUploadLockedFiles = [];
-    _superAdminUploadLockActive = false;
-    try { document.body.classList.remove('super-admin-upload-lock'); } catch(e) {}
-    return;
-  }
-  if (_superAdminUploadLockActive) return;
-  _superAdminUploadLockActive = true;
-  _superAdminUploadLockedFiles = Array.from(document.querySelectorAll('input[type="file"]')).map(function(el) {
-    var item = {
-      el: el,
-      disabled: !!el.disabled,
-      pointerEvents: el.style.pointerEvents || '',
-      display: el.style.display || ''
-    };
-    el.disabled = true;
-    el.style.pointerEvents = 'none';
-    el.style.display = 'none';
-    return item;
-  });
-  try { document.body.classList.add('super-admin-upload-lock'); } catch(e) {}
+  try { document.body.classList.toggle('super-admin-control-mode', !!enable); } catch(e) {}
 }
 
 // ========================================
