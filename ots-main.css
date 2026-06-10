@@ -3467,6 +3467,16 @@ body.super-admin-upload-lock .btn-upload-photo,
 body.super-admin-upload-lock .community-ad-image-btn{
   pointer-events:none !important;
 }
+body.super-admin-upload-lock input[type=file]{
+  display:none !important;
+}
+body.super-admin-upload-lock #atab-content-superadmin,
+body.super-admin-upload-lock #atab-content-superadmin *,
+body.super-admin-upload-lock .sa-admin-actions,
+body.super-admin-upload-lock .sa-admin-actions button{
+  pointer-events:auto !important;
+  touch-action:manipulation !important;
+}
 
 body.super-admin-upload-lock #createAdminModal,
 body.super-admin-upload-lock #createAdminModal *,

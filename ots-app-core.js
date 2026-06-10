@@ -992,12 +992,18 @@ const LIGHT_PROOF_SQL = "CASE WHEN LENGTH(COALESCE(proof_url,'')) > 0 THEN '__up
 function isProofPlaceholder(url) {
   return String(url || '') === '__uploaded__';
 }
+function isUsableProofImageUrl(url) {
+  var s = String(url || '').trim();
+  if (!s || isProofPlaceholder(s)) return false;
+  return /^data:image\//i.test(s) || /^https?:\/\//i.test(s) || /^blob:/i.test(s);
+}
 function bookingHasProofRecord(b) {
   return !!(b && (b.proofUrl || b.proofClaimed));
 }
 async function fetchBookingProofUrl(bookingId) {
   var rows = await neonSQL('SELECT proof_url FROM bookings WHERE id=$1 LIMIT 1', [bookingId]);
-  return rows && rows[0] ? (rows[0].proof_url || '') : '';
+  var proof = rows && rows[0] ? (rows[0].proof_url || '') : '';
+  return isUsableProofImageUrl(proof) ? proof : '';
 }
 function mapVenueRows(vRows) {
   return (vRows || []).map(function(v){ return {
@@ -1818,6 +1824,7 @@ function pickVenue(id) {
 // ADMIN SESSION PERSISTENCE
 // =======================================
 function _saveAdminSession() {
+  currentAdminRole = normalizeAdminRole(currentAdminRole);
   var data = JSON.stringify({ exp: Date.now() + 365*24*60*60*1000, v: 3, u: currentAdminUsername, r: currentAdminRole, p: currentAdminPermissions || {} });
   try { localStorage.setItem('ots_admin_session', data); } catch(e){}
   try { sessionStorage.setItem('ots_admin_session', data); } catch(e){}
@@ -1838,24 +1845,10 @@ function _clearAdminSession() {
   document.documentElement.removeAttribute('data-admin-active');
 }
 function _hasAdminSession() {
-  // Check localStorage
+  if (_getAdminSessionData()) return true;
+  // Cookie alone cannot safely restore role/access. Keep it only as a page-ready hint.
   try {
-    var ls = JSON.parse(localStorage.getItem('ots_admin_session') || 'null');
-    if (ls && (ls.u || ls.r || ls.v)) return true;
-  } catch(e){}
-  // Check sessionStorage
-  try {
-    var ss = JSON.parse(sessionStorage.getItem('ots_admin_session') || 'null');
-    if (ss && (ss.u || ss.r || ss.v)) return true;
-  } catch(e){}
-  // Check cookie
-  try {
-    if (document.cookie.split(';').some(function(c){ return c.trim().startsWith('ots_admin_s=1'); })) return true;
-  } catch(e){}
-  // window.name fallback
-  try {
-    var wn2={}; try{wn2=JSON.parse(window.name||'{}')}catch(_){}
-    if (wn2['ots.ots_admin_s']) { var d4=JSON.parse(wn2['ots.ots_admin_s']); if(d4&&(d4.u||d4.r||d4.v)) return true; }
+    if (document.cookie.split(';').some(function(c){ return c.trim().startsWith('ots_admin_s=1'); })) return false;
   } catch(e){}
   return false;
 }
@@ -1867,16 +1860,20 @@ function _getAdminSessionData() {
 }
 function restoreAdminSession() {
   try {
-    if (_hasAdminSession()) {
+    var sd = _getAdminSessionData();
+    if (sd) {
       adminLoggedIn = true;
-      var sd = _getAdminSessionData();
-      if (sd && sd.u) { currentAdminUsername = sd.u; currentAdminRole = sd.r || 'admin'; currentAdminPermissions = parseAdminPermissions(sd.p); }
+      currentAdminUsername = sd.u || currentAdminUsername || getAdminUser();
+      currentAdminRole = normalizeAdminRole(sd.r || currentAdminRole || 'admin');
+      currentAdminPermissions = parseAdminPermissions(sd.p);
       _saveAdminSession(); // renew all stores
-      document.getElementById('logoutBtn').classList.add('show');
+      var logout = document.getElementById('logoutBtn'); if (logout) logout.classList.add('show');
       var _ab = document.getElementById('adminPanelBtn'); if (_ab) _ab.style.display = '';
       _applySuperAdminVisibility();
       // Silently pre-load claims so the badge count shows immediately
       setTimeout(function() { loadAdminClaims().catch(function(){}); }, 1500);
+    } else {
+      _clearAdminSession();
     }
   } catch(e) { console.warn('Admin session restore error:', e); }
 }
@@ -4722,7 +4719,7 @@ window.addEventListener('unhandledrejection', function(e){
 
 function switchAdminTab(tab) {
   if (tab === 'approvals') tab = 'venues'; // redirect removed tab
-  if ((tab === 'settings' || tab === 'superadmin') && currentAdminRole !== 'superadmin') {
+  if ((tab === 'settings' || tab === 'superadmin') && !isCurrentSuperAdmin()) {
     showToast('', 'Super Admin Only', 'Only the Super Admin can open Settings.');
     tab = 'venues';
   }
@@ -4800,6 +4797,7 @@ function setSuperAdminUploadLock(enable) {
     };
     el.disabled = true;
     el.style.pointerEvents = 'none';
+    el.style.display = 'none';
     return item;
   });
   try { document.body.classList.add('super-admin-upload-lock'); } catch(e) {}
@@ -5407,7 +5405,7 @@ function _openProofOverlay(url) {
 }
 
 async function saveAdminPhone() {
-  if (currentAdminRole !== 'superadmin') { showToast('', 'Super Admin Only', 'Only Super Admin can change settings.'); return; }
+  if (!isCurrentSuperAdmin()) { showToast('', 'Super Admin Only', 'Only Super Admin can change settings.'); return; }
   var inp = document.getElementById('settings-admin-phone');
   var status = document.getElementById('settings-phone-status');
   if (!inp) return;
@@ -5431,7 +5429,7 @@ async function saveAdminPhone() {
   }
 }
 async function saveHelpdeskNumbers() {
-  if (currentAdminRole !== 'superadmin') { showToast('', 'Super Admin Only', 'Only Super Admin can change settings.'); return; }
+  if (!isCurrentSuperAdmin()) { showToast('', 'Super Admin Only', 'Only Super Admin can change settings.'); return; }
   var inp = document.getElementById('settings-helpdesk-numbers');
   var status = document.getElementById('settings-helpdesk-status');
   if (!inp) return;
@@ -5456,7 +5454,7 @@ async function saveHelpdeskNumbers() {
   }
 }
 async function saveZoneNames() {
-  if (currentAdminRole !== 'superadmin') { showToast('', 'Super Admin Only', 'Only Super Admin can change settings.'); return; }
+  if (!isCurrentSuperAdmin()) { showToast('', 'Super Admin Only', 'Only Super Admin can change settings.'); return; }
   var inp = document.getElementById('settings-zone-names');
   var status = document.getElementById('settings-zone-status');
   if (!inp) return;
@@ -7483,7 +7481,7 @@ function buildMonthlyReportRows(ctx) {
       bookedBy: getBookingPersonName(b) || '',
       performanceType: b.type || '',
       performers: bookingPerformersText(b) || b.name || '',
-      photoUrl: isProofPlaceholder(b.proofUrl) ? '' : (b.proofUrl || ''),
+      photoUrl: isUsableProofImageUrl(b.proofUrl) ? (b.proofUrl || '') : '',
       hasProof: hasProof,
       sortMs: bookingStartTimeMs(b)
     };
@@ -7612,7 +7610,7 @@ function renderMonthlyReportRows(ctx, rows) {
       '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div>' +
     '</div>' +
     _monthlyReportRows.map(function(row) {
-      var photoLabel = row.hasProof ? 'Available' : 'Missing';
+      var photoLabel = row.photoUrl ? 'Available' : (row.hasProof ? 'Loading' : 'Missing');
       var rowActions = canEditReports
         ? '<div class="monthly-report-row-actions"><button type="button" class="monthly-report-edit-btn" onclick="editMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Edit</button><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove this show</button></div>'
         : '';
@@ -7622,7 +7620,7 @@ function renderMonthlyReportRows(ctx, rows) {
         '<div><strong>' + otsEscapeHtml(row.teamName) + '</strong><span>Booked by ' + otsEscapeHtml(row.bookedBy || '-') + '</span></div>' +
         '<div>' + otsEscapeHtml(row.timeRange) + '</div>' +
         '<div><input type="number" min="0" step="1" value="' + otsEscapeHtml(row.footfall || '') + '" placeholder="0" oninput="setMonthlyReportFootfall(\'' + otsJsString(row.id) + '\', this.value)" ' + (canEditReports ? '' : 'disabled') + '></div>' +
-        '<div><span class="' + (row.hasProof ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span>' + (row.photoRotate ? '<span>Rotate ' + row.photoRotate + '</span>' : '') + '</div>' +
+        '<div><span class="' + (row.photoUrl ? 'report-photo-ok' : 'report-photo-missing') + '">' + photoLabel + '</span>' + (row.photoRotate ? '<span>Rotate ' + row.photoRotate + '</span>' : '') + '</div>' +
       '</div>';
     }).join('');
 }
@@ -7687,13 +7685,15 @@ async function hydrateMonthlyReportPhotos(rows) {
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
     var b = row.booking;
-    if (!b || row.photoUrl || (!row.hasProof && !isProofPlaceholder(b.proofUrl))) continue;
+    if (!b || row.photoUrl || !row.hasProof) continue;
     try {
       var proof = await fetchBookingProofUrl(b.id);
-      if (proof) {
+      if (isUsableProofImageUrl(proof)) {
         b.proofUrl = proof;
         row.photoUrl = proof;
         row.hasProof = true;
+      } else if (isProofPlaceholder(b.proofUrl)) {
+        row.photoUrl = '';
       }
     } catch(e) {
       console.warn('[OTS] report proof load failed for booking', b && b.id, e);
@@ -7719,6 +7719,28 @@ async function monthlyReportPhotoBlob(url) {
   var response = await fetch(url, { mode:'cors' });
   if (!response.ok) throw new Error('Photo fetch failed');
   return response.blob();
+}
+
+async function verifyMonthlyReportPhotos(rows) {
+  function canLoadImage(url) {
+    return new Promise(function(resolve) {
+      var img = new Image();
+      img.onload = function(){ resolve(true); };
+      img.onerror = function(){ resolve(false); };
+      img.src = url;
+      setTimeout(function(){ resolve(false); }, 12000);
+    });
+  }
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (!row || !row.photoUrl) continue;
+    try {
+      if (!(await canLoadImage(row.photoUrl))) row.photoUrl = '';
+    } catch(e) {
+      console.warn('[OTS] report proof image verify failed for booking', row && row.id, e && (e.message || e));
+      row.photoUrl = '';
+    }
+  }
 }
 
 function monthlyReportJpegOrientationFromBuffer(buffer) {
@@ -7813,7 +7835,7 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
     var photo = row.photoUrl
       ? '<img class="report-proof-photo" src="' + otsEscapeHtml(row.photoUrl) + '" alt="' + otsEscapeHtml(row.teamName) + ' at ' + otsEscapeHtml(row.venueName) + '">'
       : (row.hasProof
-        ? '<div class="report-photo-empty">Proof photo recorded</div>'
+        ? '<div class="report-photo-empty">Photo not loaded - use Edit to attach photo</div>'
         : '<div class="report-photo-empty">Photo not attached</div>');
     return '<section class="report-page report-show-page">' +
       logoHtml +
@@ -7880,6 +7902,7 @@ async function openMonthlyReportWindow(autoPrint) {
   showToast('', 'Preparing Report', autoPrint ? 'Chrome will open the PDF save window after photos load.' : 'Opening report preview after photos load.');
   try {
     await hydrateMonthlyReportPhotos(rows);
+    await verifyMonthlyReportPhotos(rows);
     await normalizeMonthlyReportPhotos(rows);
     var html = buildMonthlyReportPrintHtml(ctx, rows);
     win.document.open();
@@ -8626,14 +8649,23 @@ var ADMIN_PERMISSION_DEFS = [
   { key:'reports', label:'Monthly reports', desc:'Edit report rows/photos/footfall, remove shows and view/download PDFs.' },
   { key:'errors',  label:'Error reports',  desc:'Review technical bug reports and send test diagnostics.' }
 ];
+function normalizeAdminRole(role) {
+  var r = String(role || '').trim().toLowerCase().replace(/[\s-]+/g, '');
+  if (r === 'superadmin' || r === 'superadministrator' || r === 'super') return 'superadmin';
+  return 'admin';
+}
 function parseAdminPermissions(value) {
   if (!value) return {};
   if (typeof value === 'object') return value || {};
   try { return JSON.parse(value || '{}') || {}; } catch(e) { return {}; }
 }
 function hasAdminPerm(key) {
-  if (currentAdminRole === 'superadmin') return true;
+  if (isCurrentSuperAdmin()) return true;
   return !!(currentAdminPermissions && currentAdminPermissions[key]);
+}
+function isCurrentSuperAdmin() {
+  currentAdminRole = normalizeAdminRole(currentAdminRole);
+  return currentAdminRole === 'superadmin';
 }
 function requireAdminPerm(key, label) {
   if (hasAdminPerm(key)) return true;
@@ -8656,7 +8688,7 @@ function setCheckedAdminPermissions(prefix, perms) {
   });
 }
 function adminPermissionSummary(perms, role) {
-  if (role === 'superadmin') return 'Full access';
+  if (normalizeAdminRole(role) === 'superadmin') return 'Full access';
   perms = parseAdminPermissions(perms);
   var names = ADMIN_PERMISSION_DEFS.filter(function(def){ return !!perms[def.key]; }).map(function(def){ return def.label; });
   return names.length ? names.join(', ') : 'View only';
@@ -8683,8 +8715,7 @@ function handleLogoClick() {
     }
     // Re-verify session from localStorage in case in-memory var was reset
     if (!adminLoggedIn && _hasAdminSession()) {
-      adminLoggedIn = true;
-      document.getElementById('logoutBtn').classList.add('show');
+      restoreAdminSession();
     }
     if (adminLoggedIn) {
       // Hide member login overlay if showing, go straight to admin
@@ -8802,7 +8833,7 @@ async function doLogin() {
         ]);
         if (row && String(row.password || '').trim() === p) {
           authenticated = true;
-          role = row.role || 'admin';
+          role = normalizeAdminRole(row.role || 'admin');
           permissions = parseAdminPermissions(row.permissions);
         }
       } catch(e) {
@@ -8816,7 +8847,7 @@ async function doLogin() {
   if (authenticated) {
     adminLoggedIn = true;
     currentAdminUsername = u;
-    currentAdminRole = role;
+    currentAdminRole = normalizeAdminRole(role);
     currentAdminPermissions = permissions;
     _saveAdminSession();
     err.classList.remove('show');
@@ -8966,54 +8997,90 @@ async function updateAdminNotifCount() {
 }
 
 async function loadSuperAdminData() {
-  if (currentAdminRole !== 'superadmin') return;
-  document.getElementById('sa-admins-list').innerHTML = '<div style="color:var(--muted);font-size:.85rem;">Loading...</div>';
-  document.getElementById('sa-logs-list').innerHTML = '<div style="color:var(--muted);font-size:.85rem;">Loading...</div>';
+  currentAdminRole = normalizeAdminRole(currentAdminRole);
+  if (!isCurrentSuperAdmin()) {
+    _applySuperAdminVisibility();
+    showToast('', 'Super Admin Only', 'Please log in with a Super Admin account.');
+    return;
+  }
+  var adminsEl = document.getElementById('sa-admins-list');
+  var logsEl = document.getElementById('sa-logs-list');
+  if (adminsEl) adminsEl.innerHTML = '<div style="color:var(--muted);font-size:.85rem;">Loading admin accounts...</div>';
+  if (logsEl) logsEl.innerHTML = '<div style="color:var(--muted);font-size:.85rem;">Loading activity...</div>';
   try {
     try {
+      await neonSQL("ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT '{}'");
+      await neonSQL("ALTER TABLE admins ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true");
+      await neonSQL("ALTER TABLE admins ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()");
       _saAdmins = await neonSQL("SELECT id,username,role,active,created_at,permissions FROM admins ORDER BY created_at");
     } catch(colErr) {
-      await neonSQL("ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT '{}'");
+      console.warn('[OTS] super admin account load retry:', colErr && (colErr.message || colErr));
       _saAdmins = await neonSQL("SELECT id,username,role,active,created_at,permissions FROM admins ORDER BY created_at");
     }
     _renderSAAdmins();
   } catch(e) {
-    document.getElementById('sa-admins-list').innerHTML = '<div style="color:var(--muted);">Could not load admins.</div>';
+    console.error('[OTS] super admin account load failed:', e);
+    if (adminsEl) adminsEl.innerHTML = '<div style="color:#ff8a35;line-height:1.6;">Could not load admin accounts. Check internet and tap Refresh. <br><span style="color:var(--muted);font-size:.78rem;">' + otsEscapeHtml((e && e.message) || 'Admin data request failed') + '</span></div>';
   }
   try {
     var logs = await neonSQL("SELECT admin_username,action,details,created_at FROM admin_logs ORDER BY created_at DESC LIMIT 150");
     _renderSALogs(logs);
   } catch(e) {
-    document.getElementById('sa-logs-list').innerHTML = '<div style="color:var(--muted);">Could not load logs.</div>';
+    console.warn('[OTS] super admin activity log load failed:', e && (e.message || e));
+    if (logsEl) logsEl.innerHTML = '<div style="color:var(--muted);">Could not load logs. Admin accounts can still be managed above.</div>';
   }
 }
 
 function _renderSAAdmins() {
   var el = document.getElementById('sa-admins-list');
+  if (!el) return;
   if (!_saAdmins.length) { el.innerHTML = '<div style="color:var(--muted);">No admins yet.</div>'; return; }
   el.innerHTML = '<div class="sa-admin-head">' +
     '<div>Username</div><div>Role</div><div>Access</div><div>Status</div><div></div></div>' +
     _saAdmins.map(function(a) {
       var isSelf = (a.username === currentAdminUsername);
-      var roleLabel = a.role === 'superadmin'
+      var role = normalizeAdminRole(a.role);
+      var isActive = !(a.active === false || String(a.active).toLowerCase() === 'false' || String(a.active) === '0');
+      var roleLabel = role === 'superadmin'
         ? '<span style="color:#7c3aed;font-weight:700;"> Super Admin</span>'
         : '<span style="color:var(--muted);">Admin</span>';
-      var statusLabel = a.active
+      var statusLabel = isActive
         ? '<span style="color:#22c55e;font-weight:600;">Active</span>'
         : '<span style="color:#ef4444;font-weight:600;">Disabled</span>';
+      var safeUsername = otsEscapeHtml(a.username || '');
       var toggleBtn = isSelf ? '<span style="font-size:.7rem;color:var(--muted);">(you)</span>'
-        : a.active
-          ? '<button class="btn-reject" style="font-size:.72rem;padding:.2rem .5rem;" onclick="toggleAdminActive('+a.id+',false,\''+a.username+'\')">Disable</button>'
-          : '<button class="btn-approve" style="font-size:.72rem;padding:.2rem .5rem;" onclick="toggleAdminActive('+a.id+',true,\''+a.username+'\')">Enable</button>';
-      var accessBtn = a.role === 'superadmin' ? '' : '<button class="btn-secondary" style="font-size:.7rem;padding:.22rem .55rem;margin-right:.35rem;" onclick="return handleAdminAccessClick(event,'+a.id+',\''+otsJsString(a.username)+'\')">Access</button>';
+        : isActive
+          ? '<button type="button" class="btn-reject sa-toggle-admin-btn" data-admin-id="' + otsEscapeHtml(a.id) + '" data-admin-username="' + safeUsername + '" data-admin-active="false" style="font-size:.72rem;padding:.2rem .5rem;">Disable</button>'
+          : '<button type="button" class="btn-approve sa-toggle-admin-btn" data-admin-id="' + otsEscapeHtml(a.id) + '" data-admin-username="' + safeUsername + '" data-admin-active="true" style="font-size:.72rem;padding:.2rem .5rem;">Enable</button>';
+      var accessBtn = role === 'superadmin' ? '' : '<button type="button" class="btn-secondary sa-access-btn" data-admin-id="' + otsEscapeHtml(a.id) + '" data-admin-username="' + safeUsername + '" style="font-size:.7rem;padding:.22rem .55rem;margin-right:.35rem;">Access</button>';
       return '<div class="sa-admin-row">' +
-        '<div class="sa-admin-name">'+a.username+'</div>' +
+        '<div class="sa-admin-name">'+safeUsername+'</div>' +
         '<div class="sa-admin-role">'+roleLabel+'</div>' +
-        '<div class="sa-admin-access">'+adminPermissionSummary(a.permissions, a.role)+'</div>' +
+        '<div class="sa-admin-access">'+otsEscapeHtml(adminPermissionSummary(a.permissions, role))+'</div>' +
         '<div class="sa-admin-status">'+statusLabel+'</div>' +
         '<div class="sa-admin-actions">'+accessBtn+toggleBtn+'</div>' +
         '</div>';
     }).join('');
+  bindSuperAdminAccountButtons();
+}
+
+function bindSuperAdminAccountButtons() {
+  var root = document.getElementById('sa-admins-list');
+  if (!root) return;
+  root.querySelectorAll('.sa-access-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(event) {
+      handleAdminAccessClick(event, btn.getAttribute('data-admin-id'), btn.getAttribute('data-admin-username') || '');
+    }, { passive:false });
+  });
+  root.querySelectorAll('.sa-toggle-admin-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(event) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      toggleAdminActive(btn.getAttribute('data-admin-id'), btn.getAttribute('data-admin-active') === 'true', btn.getAttribute('data-admin-username') || '');
+    }, { passive:false });
+  });
 }
 
 function handleCreateAdminClick(event) {
@@ -9044,6 +9111,7 @@ function handleAdminAccessClick(event, id, username) {
 
 function _renderSALogs(logs) {
   var el = document.getElementById('sa-logs-list');
+  if (!el) return;
   // Strip login-only entries
   var filtered = logs.filter(function(l){ return l.action !== 'login'; });
   if (!filtered.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem;">No activity yet.</div>'; return; }
@@ -9098,7 +9166,7 @@ function _fmtLogDate(ts) {
 
 // -- Platform Reset ------------------------------------------------------------
 function openResetModal() {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   var inp = document.getElementById('resetConfirmInput');
   var btn = document.getElementById('resetSubmitBtn');
   var err = document.getElementById('reset-err');
@@ -9112,7 +9180,7 @@ function closeResetModal() {
   document.getElementById('resetPlatformModal').classList.remove('show');
 }
 async function submitPlatformReset() {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   var inp = document.getElementById('resetConfirmInput');
   var btn = document.getElementById('resetSubmitBtn');
   var err = document.getElementById('reset-err');
@@ -9148,7 +9216,7 @@ async function submitPlatformReset() {
 
 // -- Venue Data Reset ---------------------------------------------------------
 function openClearVenuesModal() {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   var inp = document.getElementById('clearVenuesConfirmInput');
   var btn = document.getElementById('clearVenuesSubmitBtn');
   var err = document.getElementById('clear-venues-err');
@@ -9162,7 +9230,7 @@ function closeClearVenuesModal() {
   document.getElementById('clearVenuesModal').classList.remove('show');
 }
 async function submitClearAllVenues() {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   var inp = document.getElementById('clearVenuesConfirmInput');
   var btn = document.getElementById('clearVenuesSubmitBtn');
   var err = document.getElementById('clear-venues-err');
@@ -9201,7 +9269,7 @@ async function submitClearAllVenues() {
 }
 
 function openCreateAdminModal() {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   setSuperAdminUploadLock(true);
   _createAdminSaving = false;
   document.getElementById('ca-username').value = '';
@@ -9230,7 +9298,7 @@ function syncCreateAdminPermissionUi() {
   if (wrap) wrap.style.display = role === 'superadmin' ? 'none' : '';
 }
 async function submitCreateAdmin() {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   if (_createAdminSaving) return;
   var u = document.getElementById('ca-username').value.trim();
   var p = document.getElementById('ca-password').value;
@@ -9263,7 +9331,7 @@ async function submitCreateAdmin() {
   }
 }
 function openAdminAccessModal(id, username) {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   setSuperAdminUploadLock(true);
   _adminAccessSaving = false;
   var admin = _saAdmins.find(function(a){ return Number(a.id) === Number(id); });
@@ -9289,7 +9357,7 @@ function closeAdminAccessModal() {
   if (currentAdminTab !== 'superadmin') setSuperAdminUploadLock(false);
 }
 async function saveAdminAccess() {
-  if (currentAdminRole !== 'superadmin') return;
+  if (!isCurrentSuperAdmin()) return;
   if (_adminAccessSaving) return;
   var id = document.getElementById('aa-id').value;
   var username = document.getElementById('aa-username').value || 'admin';
@@ -9345,7 +9413,7 @@ async function logAdminAction(action, details) {
 
 // -- Show/hide super-admin-only UI -----------------------------------------
 function _applySuperAdminVisibility() {
-  var isSA = (currentAdminRole === 'superadmin');
+  var isSA = isCurrentSuperAdmin();
   var btn = document.getElementById('atab-superadmin-btn');
   if (btn) btn.style.display = isSA ? '' : 'none';
   var settingsBtn = document.getElementById('atab-settings');
