@@ -648,19 +648,54 @@ body.modal-lock{overflow:hidden;touch-action:none;}
   display:flex;
   gap:.62rem;
   align-items:flex-start;
+  width:100%;
+  text-align:left;
   background:rgba(255,255,255,.04);
   border:1px solid var(--border);
   border-radius:6px;
   padding:.75rem .85rem;
   cursor:pointer;
   min-height:76px;
+  color:var(--text);
+  font:inherit;
+  appearance:none;
+  -webkit-appearance:none;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;
+  user-select:none;
 }
-.admin-permission-card input{
+.admin-permission-card:hover,
+.admin-permission-card:focus-visible{
+  border-color:rgba(112,186,244,.46);
+  background:rgba(112,186,244,.07);
+  outline:none;
+}
+.admin-permission-card.is-checked{
+  border-color:rgba(112,186,244,.45);
+  background:rgba(112,186,244,.08);
+}
+.admin-permission-box{
+  display:grid;
+  place-items:center;
   width:16px;
   height:16px;
   margin-top:.1rem;
   flex:0 0 auto;
-  accent-color:#70BAF4;
+  border:2px solid rgba(244,240,255,.75);
+  border-radius:3px;
+  background:#fff;
+  color:#111827;
+  font-size:12px;
+  line-height:1;
+  font-weight:900;
+}
+.admin-permission-card.is-checked .admin-permission-box{
+  border-color:#70BAF4;
+  background:#70BAF4;
+}
+.admin-permission-card.is-checked .admin-permission-box::before{
+  content:"\2713";
 }
 .admin-permission-card strong{
   display:block;
@@ -668,7 +703,11 @@ body.modal-lock{overflow:hidden;touch-action:none;}
   color:var(--text);
   line-height:1.25;
 }
-.admin-permission-card span span{
+.admin-permission-copy{
+  display:block;
+  min-width:0;
+}
+.admin-permission-copy span{
   display:block;
   font-size:.71rem;
   color:var(--muted);

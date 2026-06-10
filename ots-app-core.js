@@ -8688,7 +8688,7 @@ function getCheckedAdminPermissions(prefix) {
   var perms = {};
   ADMIN_PERMISSION_DEFS.forEach(function(def) {
     var el = document.getElementById(prefix + def.key);
-    perms[def.key] = !!(el && el.checked);
+    perms[def.key] = isAdminPermissionChecked(el);
   });
   return perms;
 }
@@ -8696,7 +8696,7 @@ function setCheckedAdminPermissions(prefix, perms) {
   perms = parseAdminPermissions(perms);
   ADMIN_PERMISSION_DEFS.forEach(function(def) {
     var el = document.getElementById(prefix + def.key);
-    if (el) el.checked = !!perms[def.key];
+    setAdminPermissionChecked(el, !!perms[def.key]);
   });
 }
 function adminPermissionSummary(perms, role) {
@@ -8708,12 +8708,53 @@ function adminPermissionSummary(perms, role) {
 function renderPermissionChecks(prefix, selected) {
   selected = parseAdminPermissions(selected);
   return '<div class="admin-permission-grid">' + ADMIN_PERMISSION_DEFS.map(function(def) {
-    return '<label class="admin-permission-card">' +
-      '<input type="checkbox" id="' + prefix + def.key + '" ' + (selected[def.key] ? 'checked' : '') + '>' +
-      '<span><strong>' + def.label + '</strong>' +
-      '<span>' + def.desc + '</span></span>' +
-    '</label>';
+    var checked = !!selected[def.key];
+    return '<button type="button" class="admin-permission-card ' + (checked ? 'is-checked' : '') + '" ' +
+      'id="' + prefix + def.key + '" role="checkbox" aria-checked="' + (checked ? 'true' : 'false') + '" ' +
+      'data-checked="' + (checked ? 'true' : 'false') + '" data-permission-key="' + otsEscapeHtml(def.key) + '" ' +
+      'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" ' +
+      'onclick="return toggleAdminPermissionCard(event,this)">' +
+      '<span class="admin-permission-box" aria-hidden="true"></span>' +
+      '<span class="admin-permission-copy"><strong>' + otsEscapeHtml(def.label) + '</strong>' +
+      '<span>' + otsEscapeHtml(def.desc) + '</span></span>' +
+    '</button>';
   }).join('') + '</div>';
+}
+
+function isAdminPermissionChecked(el) {
+  if (!el) return false;
+  if (el.type === 'checkbox') return !!el.checked;
+  return el.getAttribute('aria-checked') === 'true' || el.getAttribute('data-checked') === 'true';
+}
+
+function setAdminPermissionChecked(el, checked) {
+  if (!el) return;
+  checked = !!checked;
+  if (el.type === 'checkbox') {
+    el.checked = checked;
+    return;
+  }
+  el.setAttribute('aria-checked', checked ? 'true' : 'false');
+  el.setAttribute('data-checked', checked ? 'true' : 'false');
+  el.classList.toggle('is-checked', checked);
+}
+
+function toggleAdminPermissionCard(event, el) {
+  if (event) {
+    try {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    } catch(e) {}
+  }
+  setAdminPermissionChecked(el, !isAdminPermissionChecked(el));
+  try {
+    if (document.activeElement && document.activeElement !== el && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    if (el && el.focus) el.focus({ preventScroll:true });
+  } catch(e) {}
+  return false;
 }
 
 function handleLogoClick() {
