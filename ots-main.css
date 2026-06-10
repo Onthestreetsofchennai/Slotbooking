@@ -3498,6 +3498,23 @@ body.admin-booking-edit-open .admin-booking-edit-modal textarea.form-input{
   user-select:text;
 }
 
+body.admin-access-control-open input[type=file],
+body.admin-access-control-open .csv-import-zone,
+body.admin-access-control-open .member-phone-import-zone,
+body.admin-access-control-open .photo-drop-zone,
+body.admin-access-control-open .btn-upload-photo,
+body.admin-access-control-open .community-ad-image-btn{
+  display:none !important;
+  pointer-events:none !important;
+}
+
+body.admin-access-control-open #createAdminModal,
+body.admin-access-control-open #createAdminModal *,
+body.admin-access-control-open #adminAccessModal,
+body.admin-access-control-open #adminAccessModal *{
+  pointer-events:auto !important;
+}
+
 @media(max-width:700px){
   body.modal-lock{
     padding-bottom:0 !important;

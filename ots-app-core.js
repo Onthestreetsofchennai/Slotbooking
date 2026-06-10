@@ -4770,8 +4770,55 @@ function syncAdminUploadInputsForTab(tab) {
 
 var _safeFileInputId = '';
 var _safeFileInputUntil = 0;
+var _adminAccessDisabledFileInputs = [];
+
+function isAdminAccessControlModalOpen() {
+  var access = document.getElementById('adminAccessModal');
+  var create = document.getElementById('createAdminModal');
+  return !!((access && access.classList.contains('show')) || (create && create.classList.contains('show')));
+}
+
+function setAdminAccessControlModalOpen(enable) {
+  try { document.body.classList.toggle('admin-access-control-open', !!enable); } catch(e) {}
+  if (enable) {
+    _safeFileInputId = '';
+    _safeFileInputUntil = 0;
+    if (!_adminAccessDisabledFileInputs.length) {
+      try {
+        document.querySelectorAll('input[type="file"]').forEach(function(input) {
+          _adminAccessDisabledFileInputs.push({
+            el: input,
+            disabled: !!input.disabled,
+            tabindex: input.getAttribute('tabindex'),
+            ariaHidden: input.getAttribute('aria-hidden')
+          });
+          input.disabled = true;
+          input.setAttribute('tabindex', '-1');
+          input.setAttribute('aria-hidden', 'true');
+        });
+      } catch(e) {}
+    }
+    try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch(e) {}
+    return;
+  }
+  _adminAccessDisabledFileInputs.forEach(function(item) {
+    if (!item || !item.el) return;
+    item.el.disabled = item.disabled;
+    if (item.tabindex === null) item.el.removeAttribute('tabindex');
+    else item.el.setAttribute('tabindex', item.tabindex);
+    if (item.ariaHidden === null) item.el.removeAttribute('aria-hidden');
+    else item.el.setAttribute('aria-hidden', item.ariaHidden);
+  });
+  _adminAccessDisabledFileInputs = [];
+}
+
+function isUploadTriggerElement(el) {
+  if (!el || !el.closest) return false;
+  return !!el.closest('input[type="file"], label[for], [onclick*="openFileInputSafely"], .csv-import-zone, .member-phone-import-zone, .photo-drop-zone, .id-proof-upload-area, .btn-upload-photo, .community-ad-image-btn, .proof-file-label');
+}
 
 function openFileInputSafely(id) {
+  if (isAdminAccessControlModalOpen()) return false;
   var el = document.getElementById(id);
   if (!el || el.disabled) return false;
   _safeFileInputId = id;
@@ -4801,10 +4848,30 @@ function isVisibleFileInputForActiveArea(input) {
 
 document.addEventListener('click', function(event) {
   var target = event.target;
+  if (isAdminAccessControlModalOpen() && isUploadTriggerElement(target)) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    return false;
+  }
   if (!target || !target.matches || !target.matches('input[type="file"]')) return;
+  if (isAdminAccessControlModalOpen()) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    return false;
+  }
   var id = target.id || '';
   var expected = id && _safeFileInputId === id && Date.now() <= _safeFileInputUntil;
   if (expected || isVisibleFileInputForActiveArea(target)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+  return false;
+}, true);
+
+document.addEventListener('pointerdown', function(event) {
+  if (!isAdminAccessControlModalOpen() || !isUploadTriggerElement(event.target)) return;
   event.preventDefault();
   event.stopPropagation();
   if (event.stopImmediatePropagation) event.stopImmediatePropagation();
@@ -7326,8 +7393,8 @@ function editMonthlyReportShow(bookingId) {
     }
   }
   if (status) {
-    status.textContent = row.hasProof ? 'Photo already available. Choose a new one only if you want to replace it.' : 'No proof photo found. Choose a photo to add it to this report.';
-    status.style.color = row.hasProof ? 'var(--green)' : 'var(--muted)';
+    status.textContent = row.photoUrl ? 'Photo already available. Choose a new one only if you want to replace it.' : 'No proof photo found. Choose a photo to add it to this report.';
+    status.style.color = row.photoUrl ? 'var(--green)' : 'var(--muted)';
   }
   modal.classList.add('show');
 }
@@ -7522,7 +7589,7 @@ function computeMonthlyReportSummary(rows) {
       totalFootfall += row.footfall;
       footfallFilled++;
     }
-    if (!row.hasProof) missingPhotos++;
+    if (!row.photoUrl) missingPhotos++;
   });
   return {
     venues: Object.keys(venueSeen).length,
@@ -7622,7 +7689,7 @@ function renderMonthlyReportRows(ctx, rows) {
       '<div>Date</div><div>Venue</div><div>Team</div><div>Time</div><div>Footfall</div><div>Photo</div>' +
     '</div>' +
     _monthlyReportRows.map(function(row) {
-      var photoLabel = row.photoUrl ? 'Available' : (row.hasProof ? 'Loading' : 'Missing');
+      var photoLabel = row.photoUrl ? 'Available' : 'Missing';
       var rowActions = canEditReports
         ? '<div class="monthly-report-row-actions"><button type="button" class="monthly-report-edit-btn" onclick="editMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Edit</button><button type="button" class="monthly-report-remove-btn" onclick="removeMonthlyReportShow(\'' + otsJsString(row.id) + '\')">Remove this show</button></div>'
         : '';
@@ -7649,6 +7716,7 @@ function generateMonthlyReportPreview(allowRefresh) {
   if (_adminDataLoading && currentAdminTab === 'reports') {
     if (cachedRows.length) {
       renderMonthlyReportRows(initialCtx, cachedRows);
+      refreshMonthlyReportPreviewPhotos(initialCtx, cachedRows);
       showMonthlyReportRefreshingNotice('Refreshing live report data...');
     } else {
       renderMonthlyReportLoading('Loading live report data...');
@@ -7658,6 +7726,7 @@ function generateMonthlyReportPreview(allowRefresh) {
   if (adminLoggedIn && currentAdminTab === 'reports' && _monthlyReportLoadedMonthKey !== initialCtx.monthKey && _monthlyReportLoadFailedMonthKey !== initialCtx.monthKey) {
     if (cachedRows.length) {
       renderMonthlyReportRows(initialCtx, cachedRows);
+      refreshMonthlyReportPreviewPhotos(initialCtx, cachedRows);
       showMonthlyReportRefreshingNotice('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
     } else {
       renderMonthlyReportLoading('Loading full ' + monthLabelFromKey(initialCtx.monthKey, false) + ' report data...');
@@ -7673,6 +7742,7 @@ function generateMonthlyReportPreview(allowRefresh) {
   if (allowRefresh && adminLoggedIn && currentAdminTab === 'reports' && !_adminDataLoading) {
     if (cachedRows.length) {
       renderMonthlyReportRows(initialCtx, cachedRows);
+      refreshMonthlyReportPreviewPhotos(initialCtx, cachedRows);
       showMonthlyReportRefreshingNotice('Refreshing live report data...');
     } else {
       renderMonthlyReportLoading('Loading report data...');
@@ -7687,10 +7757,12 @@ function generateMonthlyReportPreview(allowRefresh) {
   var nextRows = buildMonthlyReportRows(ctx);
   if (!nextRows.length && cachedRows.length) {
     renderMonthlyReportRows(ctx, cachedRows);
+    refreshMonthlyReportPreviewPhotos(ctx, cachedRows);
     showMonthlyReportRefreshingNotice('Live refresh returned empty once, so the last loaded report data is kept. Tap Refresh Preview again if you intentionally cleared this month.');
     return;
   }
   renderMonthlyReportRows(ctx, nextRows);
+  refreshMonthlyReportPreviewPhotos(ctx, nextRows);
 }
 
 async function hydrateMonthlyReportPhotos(rows) {
@@ -7704,13 +7776,35 @@ async function hydrateMonthlyReportPhotos(rows) {
         b.proofUrl = proof;
         row.photoUrl = proof;
         row.hasProof = true;
-      } else if (isProofPlaceholder(b.proofUrl)) {
+      } else {
         row.photoUrl = '';
+        row.hasProof = false;
       }
     } catch(e) {
       console.warn('[OTS] report proof load failed for booking', b && b.id, e);
+      row.photoUrl = '';
+      row.hasProof = false;
     }
   }
+}
+
+function refreshMonthlyReportPreviewPhotos(ctx, rows) {
+  rows = rows || [];
+  if (!rows.some(function(row) { return row && row.hasProof && !row.photoUrl; })) return;
+  var contextKey = monthlyReportContextKey(ctx);
+  hydrateMonthlyReportPhotos(rows)
+    .then(function() { return verifyMonthlyReportPhotos(rows); })
+    .then(function() {
+      if (currentAdminTab === 'reports' && _monthlyReportLastContextKey === contextKey) {
+        renderMonthlyReportRows(ctx, rows);
+      }
+    })
+    .catch(function(e) {
+      console.warn('[OTS] report preview photo refresh failed:', e && (e.message || e));
+      if (currentAdminTab === 'reports' && _monthlyReportLastContextKey === contextKey) {
+        renderMonthlyReportRows(ctx, rows);
+      }
+    });
 }
 
 function monthlyReportDataUrlToBlob(dataUrl) {
@@ -7747,10 +7841,14 @@ async function verifyMonthlyReportPhotos(rows) {
     var row = rows[i];
     if (!row || !row.photoUrl) continue;
     try {
-      if (!(await canLoadImage(row.photoUrl))) row.photoUrl = '';
+      if (!(await canLoadImage(row.photoUrl))) {
+        row.photoUrl = '';
+        row.hasProof = false;
+      }
     } catch(e) {
       console.warn('[OTS] report proof image verify failed for booking', row && row.id, e && (e.message || e));
       row.photoUrl = '';
+      row.hasProof = false;
     }
   }
 }
@@ -7846,9 +7944,7 @@ function buildMonthlyReportPrintHtml(ctx, rows) {
     prevWeek = week;
     var photo = row.photoUrl
       ? '<img class="report-proof-photo" src="' + otsEscapeHtml(row.photoUrl) + '" alt="' + otsEscapeHtml(row.teamName) + ' at ' + otsEscapeHtml(row.venueName) + '">'
-      : (row.hasProof
-        ? '<div class="report-photo-empty">Photo not loaded - use Edit to attach photo</div>'
-        : '<div class="report-photo-empty">Photo not attached</div>');
+      : '<div class="report-photo-empty">Photo not attached</div>';
     return '<section class="report-page report-show-page">' +
       logoHtml +
       weekHtml +
@@ -8709,15 +8805,16 @@ function renderPermissionChecks(prefix, selected) {
   selected = parseAdminPermissions(selected);
   return '<div class="admin-permission-grid">' + ADMIN_PERMISSION_DEFS.map(function(def) {
     var checked = !!selected[def.key];
-    return '<button type="button" class="admin-permission-card ' + (checked ? 'is-checked' : '') + '" ' +
+    return '<div class="admin-permission-card ' + (checked ? 'is-checked' : '') + '" ' +
       'id="' + prefix + def.key + '" role="checkbox" aria-checked="' + (checked ? 'true' : 'false') + '" ' +
       'data-checked="' + (checked ? 'true' : 'false') + '" data-permission-key="' + otsEscapeHtml(def.key) + '" ' +
-      'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" ' +
-      'onclick="return toggleAdminPermissionCard(event,this)">' +
+      'tabindex="0" ' +
+      'onpointerdown="return guardAdminPermissionPointer(event)" onmousedown="return guardAdminPermissionPointer(event)" ' +
+      'onkeydown="return handleAdminPermissionKey(event,this)" onclick="return toggleAdminPermissionCard(event,this)">' +
       '<span class="admin-permission-box" aria-hidden="true"></span>' +
       '<span class="admin-permission-copy"><strong>' + otsEscapeHtml(def.label) + '</strong>' +
       '<span>' + otsEscapeHtml(def.desc) + '</span></span>' +
-    '</button>';
+    '</div>';
   }).join('') + '</div>';
 }
 
@@ -8755,6 +8852,22 @@ function toggleAdminPermissionCard(event, el) {
     if (el && el.focus) el.focus({ preventScroll:true });
   } catch(e) {}
   return false;
+}
+
+function guardAdminPermissionPointer(event) {
+  if (event) {
+    try {
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    } catch(e) {}
+  }
+  return true;
+}
+
+function handleAdminPermissionKey(event, el) {
+  var key = event && (event.key || event.code);
+  if (key !== 'Enter' && key !== ' ' && key !== 'Spacebar') return true;
+  return toggleAdminPermissionCard(event, el);
 }
 
 function handleLogoClick() {
@@ -9324,6 +9437,7 @@ async function submitClearAllVenues() {
 function openCreateAdminModal() {
   if (!isCurrentSuperAdmin()) return;
   setSuperAdminUploadLock(true);
+  setAdminAccessControlModalOpen(true);
   _createAdminSaving = false;
   document.getElementById('ca-username').value = '';
   document.getElementById('ca-password').value = '';
@@ -9336,12 +9450,12 @@ function openCreateAdminModal() {
   if (btn) { btn.disabled = false; btn.textContent = 'Create Admin'; }
   try { document.body.classList.add('modal-lock'); } catch(e) {}
   document.getElementById('createAdminModal').classList.add('show');
-  setTimeout(function(){ document.getElementById('ca-username').focus(); }, 100);
 }
 function closeCreateAdminModal() {
   if (_createAdminSaving) return;
   var modal = document.getElementById('createAdminModal');
   if (modal) modal.classList.remove('show');
+  setAdminAccessControlModalOpen(false);
   try { document.body.classList.remove('modal-lock'); } catch(e) {}
   if (currentAdminTab !== 'superadmin') setSuperAdminUploadLock(false);
 }
@@ -9385,10 +9499,11 @@ async function submitCreateAdmin() {
 }
 function openAdminAccessModal(id, username) {
   if (!isCurrentSuperAdmin()) return;
-  setSuperAdminUploadLock(true);
-  _adminAccessSaving = false;
   var admin = _saAdmins.find(function(a){ return Number(a.id) === Number(id); });
   if (!admin || admin.role === 'superadmin') return;
+  setSuperAdminUploadLock(true);
+  setAdminAccessControlModalOpen(true);
+  _adminAccessSaving = false;
   document.getElementById('aa-id').value = id;
   document.getElementById('aa-username').value = username || admin.username || '';
   var sub = document.getElementById('aa-sub');
@@ -9401,11 +9516,13 @@ function openAdminAccessModal(id, username) {
   if (btn) { btn.disabled = false; btn.textContent = 'Save Access'; }
   try { document.body.classList.add('modal-lock'); } catch(e) {}
   document.getElementById('adminAccessModal').classList.add('show');
+  try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch(e) {}
 }
 function closeAdminAccessModal() {
   if (_adminAccessSaving) return;
   var modal = document.getElementById('adminAccessModal');
   if (modal) modal.classList.remove('show');
+  setAdminAccessControlModalOpen(false);
   try { document.body.classList.remove('modal-lock'); } catch(e) {}
   if (currentAdminTab !== 'superadmin') setSuperAdminUploadLock(false);
 }
