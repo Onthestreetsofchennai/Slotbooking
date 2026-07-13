@@ -556,18 +556,22 @@ function _saveDismissedNotifs(){
 // -- LIGHT FRONT-PAGE PHOTO SYNC FIX --
 var _otsPhotoSyncTimer = null;
 var _otsPhotoSyncBusy = false;
+var _otsPhotoSyncLastAt = 0;
 
-async function refreshFrontPagePhotosFromNeonLight() {
+async function refreshFrontPagePhotosFromNeonLight(force) {
   if (_otsPhotoSyncBusy) return;
+  var ttl = (typeof PHOTO_LIGHT_SYNC_MS !== 'undefined' ? PHOTO_LIGHT_SYNC_MS : 120000);
+  if (!force && _otsPhotoSyncLastAt && Date.now() - _otsPhotoSyncLastAt < ttl) return;
   if (typeof otsIsAdminApp === 'function' && otsIsAdminApp()) return;
   if (typeof memberLoggedIn !== 'undefined' && !memberLoggedIn) return;
   if (typeof _perfPhotoUploadBusy !== 'undefined' && _perfPhotoUploadBusy) return;
   if (typeof _perfPhotoLocalEditAt !== 'undefined' && Date.now() - _perfPhotoLocalEditAt < 5000) return;
   _otsPhotoSyncBusy = true;
+  _otsPhotoSyncLastAt = Date.now();
   try {
     if (typeof neonSQL !== 'function') return;
     const perf = await neonSQL(
-      "SELECT id,url,caption FROM gallery WHERE id LIKE 'perf_%' ORDER BY id DESC LIMIT " + Number(PERF_HOME_LIMIT || 18)
+      "SELECT id,url,caption FROM gallery WHERE id LIKE 'perf_%' AND COALESCE(url,'') NOT LIKE 'data:%' ORDER BY id DESC LIMIT " + Number(PERF_HOME_LIMIT || 12)
     );
     var remotePhotos = _filterDeletedPerfPhotos(perf.map(function(r){
       return { id: r.id, dataUrl: r.url || '', label: r.caption || '' };
@@ -596,7 +600,7 @@ function startLightPhotoSync() {
         var homeActive = home && home.classList.contains('active');
         if (homeActive) refreshFrontPagePhotosFromNeonLight();
       } catch(e) {}
-    }, 15000);
+    }, (typeof PHOTO_LIGHT_SYNC_MS !== 'undefined' ? PHOTO_LIGHT_SYNC_MS : 120000));
   } catch(e) {}
 }
 
@@ -607,7 +611,7 @@ document.addEventListener('visibilitychange', function(){
 });
 
 document.addEventListener('DOMContentLoaded', function(){
-  setTimeout(function(){ try { refreshFrontPagePhotosFromNeonLight(); } catch(e){} }, 1200);
+  setTimeout(function(){ try { refreshFrontPagePhotosFromNeonLight(true); } catch(e){} }, 1200);
   startLightPhotoSync();
 });
 
