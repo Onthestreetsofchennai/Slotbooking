@@ -1,4 +1,4 @@
-const OTS_CACHE = "ots-booking-v42-neon-cost-optimized";
+const OTS_CACHE = "ots-booking-v43-host-file-repair";
 const OTS_ASSETS = [
   "./",
   "./index.html",
