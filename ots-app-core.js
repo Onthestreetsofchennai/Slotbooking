@@ -9177,9 +9177,15 @@ function renderPerfStrip() {
 
 // Drag-and-drop on drop zone + initial load
 function initPhotoManager() {
-  // Home should start from a tiny preview cache. The full photo list loads only
-  // when admin opens the Photos tab.
+  // Home starts instantly from the small cache, then refreshes from live data.
+  // Legacy front photos may still be stored as Base64 in Neon, so Home must
+  // fetch live rows instead of relying only on the remote-url preview cache.
   loadCachedPerfPhotoPreview();
+  setTimeout(function() {
+    loadPerfPhotos().catch(function(e) {
+      console.warn('[OTS] home front photos refresh failed:', e && (e.message || e));
+    });
+  }, 250);
   const dz = document.getElementById('photoDropZone');
   if (dz) {
     dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });

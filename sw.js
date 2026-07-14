@@ -1,4 +1,4 @@
-const OTS_CACHE = "ots-booking-v44-front-photo-compat";
+const OTS_CACHE = "ots-booking-v45-home-photo-live-refresh";
 const OTS_ASSETS = [
   "./",
   "./index.html",
