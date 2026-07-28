@@ -1,14 +1,10 @@
-const OTS_CACHE = "ots-booking-v45-home-photo-live-refresh";
+const OTS_CACHE = "ots-booking-v47-admin-month-filters";
 const OTS_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
   "./manifest.json",
   "./manifest-admin.json",
-  "./ots-main.css",
-  "./ots-app-core.js",
-  "./ots-boot.js",
-  "./ots-mobile-scroll.js",
   "./ots-brand-mark.png",
   "./ots-login-logo.png",
   "./gcc-logo.png",
