@@ -11734,6 +11734,10 @@ function isVisibleFileInputForActiveArea(input) {
   if (id === 'csvFileInput') return currentAdminTab === 'import';
   if (id === 'memberCsvInput') return currentAdminTab === 'members';
   if (id === 'zone-csv-file') return currentAdminTab === 'points';
+  // The monthly report editor is a dynamically-created modal. Its file input
+  // must be allowed while that modal is open, otherwise the global upload
+  // guard cancels the click before the system picker can appear.
+  if (id === 'monthlyReportEditPhotoFile') return isInsideVisibleModal(input);
   return false;
 }
 

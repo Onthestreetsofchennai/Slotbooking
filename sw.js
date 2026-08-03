@@ -1,4 +1,4 @@
-const OTS_CACHE = "ots-booking-v47-admin-month-filters";
+const OTS_CACHE = "ots-booking-v48-report-file-picker";
 const OTS_ASSETS = [
   "./",
   "./index.html",
