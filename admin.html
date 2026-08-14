@@ -711,6 +711,12 @@ body.modal-lock{overflow:hidden;touch-action:none;}
 #page-admin.admin-access-page-active #adminAccessPage{
   display:block;
 }
+#page-admin.admin-member-credit-page-active .admin-wrap > *:not(#adminMemberCreditPage){
+  display:none !important;
+}
+#page-admin.admin-member-credit-page-active #adminMemberCreditPage{
+  display:block;
+}
 .admin-access-page-shell{
   width:min(100%,900px);
   margin:0 auto;
@@ -781,6 +787,32 @@ body.modal-lock{overflow:hidden;touch-action:none;}
   outline:2px solid rgba(112,186,244,.75);
   outline-offset:2px;
 }
+.admin-member-credit-summary{
+  border:1px solid rgba(112,186,244,.24);
+  background:rgba(112,186,244,.07);
+  border-radius:8px;
+  padding:1rem 1.05rem;
+  margin-bottom:1.3rem;
+  color:var(--text);
+  font-size:.88rem;
+  line-height:1.55;
+}
+.admin-member-credit-summary strong{color:#fff;}
+.admin-member-credit-summary span{display:block;color:var(--muted);font-size:.76rem;margin-top:.2rem;}
+.admin-member-credit-phone-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:.65rem;
+  align-items:center;
+}
+.admin-member-credit-phone-row .form-input{margin:0;}
+.admin-member-credit-phone-row .btn-secondary{flex:0 0 auto;white-space:nowrap;}
+.admin-member-credit-status{
+  min-height:1.1rem;
+  margin-top:.45rem;
+  color:var(--muted);
+  font-size:.75rem;
+}
 @media(max-width:700px){
   .admin-access-page{min-height:calc(100dvh - 4rem);}
   .admin-access-page-shell{padding:0 0 calc(3rem + env(safe-area-inset-bottom));}
@@ -805,6 +837,8 @@ body.modal-lock{overflow:hidden;touch-action:none;}
     background:linear-gradient(180deg,rgba(18,16,31,0),#12101f 18%,#12101f);
   }
   .admin-access-page-form .admin-access-actions button{width:100%;min-height:52px;}
+  .admin-member-credit-phone-row{grid-template-columns:1fr;}
+  .admin-member-credit-phone-row .btn-secondary{width:100%;min-height:48px;}
 }
 .admin-access-fields{
   display:grid;
@@ -6706,6 +6740,44 @@ body.admin-access-control-open #adminAccessModal *{
       </div>
     </section>
 
+    <!-- FULL-PAGE MISSING MEMBER CREDIT WORKFLOW -->
+    <section id="adminMemberCreditPage" class="admin-access-page" aria-hidden="true">
+      <div class="admin-access-page-shell">
+        <div class="admin-access-page-topbar">
+          <button type="button" class="btn-secondary admin-access-back" onclick="closeAdminMemberCreditPage()" aria-label="Back to All Bookings">&#8592; Back to All Bookings</button>
+          <div class="admin-access-page-crumb">All Bookings <span>/</span> <strong>Add missing member</strong></div>
+        </div>
+        <div class="admin-access-page-heading">
+          <div class="admin-access-page-kicker">SHOW RESCUE</div>
+          <h3>Add a missing member</h3>
+          <p>Add the member who performed this completed show but was not included in the original booking. The member will receive the appropriate approved show credit.</p>
+        </div>
+        <div class="admin-access-page-form show" style="display:block;">
+          <div class="modal admin-access-dialog">
+            <div id="amc-booking-summary" class="admin-member-credit-summary"></div>
+            <div class="form-group">
+              <label class="form-label" for="amc-phone">Registered mobile number</label>
+              <div class="admin-member-credit-phone-row">
+                <input id="amc-phone" class="form-input" type="tel" inputmode="numeric" placeholder="Enter registered mobile number" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9+]/g,''); document.getElementById('amc-member-status').textContent='';">
+                <button type="button" class="btn-secondary" onclick="lookupAdminMemberCredit()">Find member</button>
+              </div>
+            </div>
+            <input type="hidden" id="amc-email" autocomplete="off">
+            <div class="form-group">
+              <label class="form-label" for="amc-name">Member name</label>
+              <input id="amc-name" class="form-input" type="text" placeholder="Member name" autocomplete="off">
+              <div id="amc-member-status" class="admin-member-credit-status" aria-live="polite"></div>
+            </div>
+            <div id="amc-err" class="login-error" style="display:none;margin-bottom:.5rem;"></div>
+            <div class="admin-access-actions">
+              <button type="button" class="btn-secondary" onclick="closeAdminMemberCreditPage()">Cancel</button>
+              <button type="button" class="btn-add-venue" id="amc-submit-btn" onclick="submitAdminMemberCredit()">Add Member &amp; Give Credit</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </div>
 </div>
 
@@ -7256,6 +7328,11 @@ async function fetchMyBookingsLive() {
       updatePendingBadge();
     }
     renderUserBookings();
+    // Recover a pending claim when an earlier upload saved the photo but the
+    // claim request timed out before it reached the database.
+    repairPendingProofClaimsForBookings(myBookings, true).catch(function(e){
+      console.warn('[OTS] member proof claim recovery failed:', e && (e.message || e));
+    });
   } catch(e) { console.warn('[OTS] fetchMyBookingsLive failed:', e); }
 }
 
@@ -8403,6 +8480,10 @@ window.addEventListener('popstate', function(ev) {
   // Admin account creation/access is a real page view, not a modal. A browser
   // Back action should return to the Super Admin tab without reloading data.
   var adminPage = document.getElementById('page-admin');
+  if (adminPage && adminPage.classList.contains('admin-member-credit-page-active')) {
+    closeAdminMemberCreditPage(false);
+    return;
+  }
   if (adminPage && adminPage.classList.contains('admin-access-page-active')) {
     closeAdminAccessPage(false);
     return;
@@ -10267,6 +10348,129 @@ function proofSubmitTap(event) {
   return false;
 }
 
+function proofClaimMembersForBooking(booking, sharedMembers, useLoggedInMember) {
+  var result = [];
+  var seen = {};
+  function add(phone, name) {
+    var normalized = _normPhone(phone || '');
+    if (!normalized || seen[normalized]) return;
+    seen[normalized] = true;
+    result.push({ phone: normalized, name: String(name || '').trim() });
+  }
+  var performerRows = sharedMembers || [];
+  var ownerPhone = useLoggedInMember ? memberPhone : (booking && booking.phone) || '';
+  var ownerName = useLoggedInMember ? memberName : (booking && booking.name) || getBookingPersonName(booking) || '';
+  // Admin recovery should prefer the saved performer list. The booking phone
+  // can be the person who entered the booking, not an artist in the team.
+  if (useLoggedInMember || !performerRows.length) add(ownerPhone, ownerName);
+  performerRows.forEach(function(member) {
+    add(member && member.phone, member && member.name);
+  });
+  return result;
+}
+
+async function insertPendingProofClaims(bookingId, claimMembers, reason) {
+  claimMembers = claimMembers || [];
+  if (!claimMembers.length) throw new Error('Registered member phone is missing');
+  var params = [String(bookingId), String(reason || '')];
+  var tuples = claimMembers.map(function(member) {
+    params.push(member.phone, member.name || '');
+    var phoneParam = params.length - 1;
+    var nameParam = params.length;
+    return '($' + phoneParam + ',$' + nameParam + ')';
+  });
+  var sql =
+    "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason) " +
+    "SELECT $1,p.phone,COALESCE(NULLIF(p.name,''),m.name,''),'pending','show',$2 " +
+    "FROM (VALUES " + tuples.join(',') + ") AS p(phone,name) " +
+    "LEFT JOIN members m ON RIGHT(REGEXP_REPLACE(m.phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE(p.phone,'[^0-9]','','g'),10) " +
+    "WHERE NOT EXISTS (SELECT 1 FROM claims c WHERE c.booking_id=$1 " +
+    "AND RIGHT(REGEXP_REPLACE(c.member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE(p.phone,'[^0-9]','','g'),10) " +
+    "AND COALESCE(c.claim_type,'show')='show')";
+  await neonSQL(sql, params);
+}
+
+async function proofPhotoSavedRemotely(bookingId) {
+  var rows = await neonSQL(
+    "SELECT id FROM bookings WHERE id=$1 AND LENGTH(COALESCE(proof_url,''))>0 LIMIT 1",
+    [String(bookingId)]
+  );
+  return !!(rows && rows.length);
+}
+
+async function proofClaimsSavedRemotely(bookingId, claimMembers) {
+  var phones = (claimMembers || []).map(function(member){ return _normPhone(member.phone || ''); }).filter(Boolean);
+  if (!phones.length) return false;
+  var params = [String(bookingId)].concat(phones);
+  var placeholders = phones.map(function(_, index){ return '$' + (index + 2); }).join(',');
+  var rows = await neonSQL(
+    "SELECT COUNT(DISTINCT RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10)) AS member_count " +
+    "FROM claims WHERE booking_id=$1 AND COALESCE(claim_type,'show')='show' " +
+    "AND RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10) IN (" + placeholders + ")",
+    params
+  );
+  return !!(rows && rows[0] && Number(rows[0].member_count || 0) >= phones.length);
+}
+
+async function writeProofWithConfirmation(writeFn, verifyFn) {
+  var lastError = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    try {
+      await writeFn();
+      return true;
+    } catch(e) {
+      lastError = e;
+      // A Worker timeout can happen after Neon committed the write. Confirm
+      // the expected state before retrying, so a successful upload is not
+      // shown as failed and a retry cannot create duplicate claims.
+      try {
+        if (verifyFn && await verifyFn()) return true;
+      } catch(_) {}
+      if (attempt === 0) await new Promise(function(resolve){ setTimeout(resolve, 650); });
+    }
+  }
+  throw lastError || new Error('Database write failed');
+}
+
+var _proofClaimRepairInFlight = {};
+async function repairPendingProofClaimsForBooking(booking, sharedMembers, reason, useLoggedInMember) {
+  if (!booking || !booking.id || String(booking.status || '').toLowerCase() !== 'confirmed' || !booking.proofUrl || booking.proofClaimed) return false;
+  var membersForClaim = proofClaimMembersForBooking(booking, sharedMembers || parseBookingPerformers(booking.performers), !!useLoggedInMember);
+  if (!membersForClaim.length) return false;
+  var repairKey = String(booking.id) + '|' + membersForClaim.map(function(member){ return member.phone; }).join(',');
+  if (_proofClaimRepairInFlight[repairKey]) return false;
+  _proofClaimRepairInFlight[repairKey] = true;
+  try {
+    await writeProofWithConfirmation(
+      function(){ return insertPendingProofClaims(booking.id, membersForClaim, reason || 'Recovered pending proof claim'); },
+      function(){ return proofClaimsSavedRemotely(booking.id, membersForClaim); }
+    );
+    return true;
+  } catch(e) {
+    console.warn('[OTS] proof claim recovery skipped:', e && (e.message || e));
+    return false;
+  } finally {
+    delete _proofClaimRepairInFlight[repairKey];
+  }
+}
+
+async function repairPendingProofClaimsForBookings(bookings, useLoggedInMember) {
+  var candidates = (bookings || []).filter(function(booking) {
+    return booking && booking.status === 'confirmed' && booking.proofUrl && !booking.proofClaimed;
+  }).slice(0, 40);
+  if (!candidates.length) return false;
+  var repaired = false;
+  // Keep repair traffic bounded so an admin refresh cannot create a burst of
+  // concurrent Neon writes when several older uploads are missing claims.
+  for (var offset = 0; offset < candidates.length; offset += 4) {
+    var batch = candidates.slice(offset, offset + 4);
+    await Promise.all(batch.map(function(booking) {
+      return repairPendingProofClaimsForBooking(booking, null, null, useLoggedInMember).then(function(didRepair){ repaired = repaired || didRepair; });
+    }));
+  }
+  return repaired;
+}
+
 async function submitProof() {
   if (_proofSubmitting) return;
   var btn = document.getElementById('proofSubmitBtn');
@@ -10305,6 +10509,8 @@ async function submitProof() {
   if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
   if (err) { err.textContent = 'Uploading. Keep this screen open for a few seconds.'; err.style.color = 'var(--muted)'; err.style.display = ''; }
   try {
+    var proofClaimMembers = proofClaimMembersForBooking(proofBooking, _sharedMembers, true);
+    if (!proofClaimMembers.length) throw new Error('Registered member phone is missing');
     // Save proof photo on the booking - proof_claimed stays FALSE until admin approves
     var bookingUpdates = { proof_url: _proofFileData, proof_claimed: false };
     if (manualArrivalIso) {
@@ -10314,23 +10520,16 @@ async function submitProof() {
       bookingUpdates.checkin_accuracy = null;
       bookingUpdates.checkin_map_url = '';
     }
-    await dbPatch('bookings', _proofBookingId, bookingUpdates);
-
-    // Insert a claim for the booker themselves
-    await neonSQL(
-      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason) " +
-      "SELECT $1,$2,$3,'pending','show',$4 WHERE NOT EXISTS (SELECT 1 FROM claims WHERE booking_id=$1 AND RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE($2::text,'[^0-9]','','g'),10) AND COALESCE(claim_type,'show')='show')",
-      [_proofBookingId, _normPhone(memberPhone||'')||memberPhone||'', memberName||'', manualReason]
+    await writeProofWithConfirmation(
+      function(){ return dbPatch('bookings', _proofBookingId, bookingUpdates); },
+      function(){ return proofPhotoSavedRemotely(_proofBookingId); }
     );
-    // Insert claims for each additional shared member
-    for (var i = 0; i < _sharedMembers.length; i++) {
-      var sm = _sharedMembers[i];
-      await neonSQL(
-        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason) " +
-        "SELECT $1,$2,$3,'pending','show',$4 WHERE NOT EXISTS (SELECT 1 FROM claims WHERE booking_id=$1 AND RIGHT(REGEXP_REPLACE(member_phone,'[^0-9]','','g'),10)=RIGHT(REGEXP_REPLACE($2::text,'[^0-9]','','g'),10) AND COALESCE(claim_type,'show')='show')",
-        [_proofBookingId, sm.phone, sm.name, manualReason]
-      );
-    }
+    // Insert the booker and all shared performers in one idempotent write.
+    // This prevents one slow performer request from leaving a photo without a claim.
+    await writeProofWithConfirmation(
+      function(){ return insertPendingProofClaims(_proofBookingId, proofClaimMembers, manualReason || 'Proof photo submitted for approval'); },
+      function(){ return proofClaimsSavedRemotely(_proofBookingId, proofClaimMembers); }
+    );
 
     // Update local caches - proofClaimed stays false (pending), set proofUrl
     [myBookings, allBookings].forEach(function(arr) {
@@ -11912,7 +12111,7 @@ function setSuperAdminUploadLock(enable) {
 // ========================================
 var _adminClaims = [];
 
-async function loadAdminClaims() {
+async function loadAdminClaims(skipProofRepair) {
   var el = document.getElementById('adminClaimsList');
   if (el) el.innerHTML = '<div class="table-empty"><span class="emoji"></span>Loading claims...</div>';
   try {
@@ -11928,6 +12127,13 @@ async function loadAdminClaims() {
     _adminClaims = rows;
     _renderAdminClaims();
     _updateClaimsBadge();
+    if (!skipProofRepair && allBookings && allBookings.length) {
+      repairPendingProofClaimsForBookings(allBookings, false).then(function(repaired) {
+        if (repaired) loadAdminClaims(true).catch(function(){});
+      }).catch(function(e){
+        console.warn('[OTS] admin proof claim recovery failed:', e && (e.message || e));
+      });
+    }
   } catch(e) {
     // Likely the claims table doesn't exist yet - show empty, not an error
     if (el) el.innerHTML = '<div class="table-empty"><span class="emoji"></span>No claims yet.</div>';
@@ -13450,7 +13656,7 @@ function renderAdminProofCell(b, canRescueShows) {
   var id = otsJsString(b && b.id || '');
   var rescueButtons = canRescueShows && b.status === 'confirmed'
     ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminAllowProofUpload('${id}')">Allow Upload</button>
-       <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>`
+       <button type="button" class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>`
     : '';
   if (b.proofClaimed) {
     var proofPreview = b.proofUrl && isProofPlaceholder(b.proofUrl)
@@ -13463,7 +13669,7 @@ function renderAdminProofCell(b, canRescueShows) {
   }
   if (b.proofUrl) {
     return `<span style="font-size:.68rem;color:var(--yellow);font-weight:600;"> Uploaded</span>
-      ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>` : ''}`;
+      ${canRescueShows && b.status === 'confirmed' ? `<button type="button" class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>` : ''}`;
   }
   if (b.checkinAt) {
     return `<div style="display:flex;flex-direction:column;gap:.15rem;">
@@ -13471,14 +13677,14 @@ function renderAdminProofCell(b, canRescueShows) {
        <span style="font-size:.62rem;color:var(--muted);">${formatCheckinTime(b.checkinAt)}</span>
        ${b.checkinMapUrl ? `<a href="${otsEscapeHtml(b.checkinMapUrl)}" target="_blank" rel="noopener" style="font-size:.62rem;color:var(--blue);font-weight:700;">Open location</a>` : ''}
        ${canRescueShows && b.status === 'confirmed' ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminAllowProofUpload('${id}')">Allow Upload</button>
-       <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>` : ''}
+       <button type="button" class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.25rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>` : ''}
      </div>`;
   }
   if (b.status === 'confirmed' && canRescueShows) {
     return `<div style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-start;">
        <span style="font-size:.68rem;color:var(--muted);">No check-in</span>
        <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminAllowProofUpload('${id}')">Allow Upload</button>
-       <button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>
+       <button type="button" class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>
      </div>`;
   }
   return `<span style="font-size:.68rem;color:var(--muted);">-</span>`;
@@ -14105,78 +14311,193 @@ async function adminFindMemberByPhone(phone) {
     return null;
   }
 }
-async function adminGrantShowPoint(id, mode) {
-  if (!requireAdminPerm('claims', 'manual show point')) return;
-  var b = allBookings.find(function(x){ return x.id === id; });
-  if (!b) return;
-  var isTeamMember = mode === 'team';
-  var targetPhone = _normPhone(b.phone || '');
-  var targetName = b.name || b.bookedBy || 'Member';
-  var targetEmail = b.email || '';
-  if (isTeamMember) {
-    var enteredPhone = prompt('Enter the missing team member mobile number');
-    if (enteredPhone === null) return;
-    targetPhone = _normPhone(enteredPhone);
-    if (!targetPhone) {
-      showToast('', 'Phone Required', 'Enter a valid member phone number.');
-      return;
-    }
-    var member = await adminFindMemberByPhone(targetPhone);
-    if (member) {
-      targetName = member.name || targetPhone;
-      targetEmail = member.email || '';
-    } else {
-      var enteredName = prompt('Member not found in member data. Enter name to add this point anyway.');
-      if (enteredName === null) return;
-      targetName = String(enteredName || '').trim() || targetPhone;
-    }
+var _adminMemberCreditBookingId = null;
+var _adminMemberCreditSaving = false;
+
+function openAdminMemberCreditPage(id) {
+  if (!(hasAdminPerm('claims') || hasAdminPerm('slots'))) {
+    showToast('', 'No Access', 'You need slot or claim access to add a missing member.');
+    return;
   }
-  var confirmText = isTeamMember
-    ? ('Add show credit for ' + targetName + ' on this booking? Approved performers will share the slot point pool.')
-    : 'Manually grant/re-approve show credit for this booking member? Approved performers will share the slot point pool.';
-  if (!confirm(confirmText)) return;
+  var booking = allBookings.find(function(x){ return String(x.id) === String(id); });
+  if (!booking) {
+    showToast('', 'Booking Not Found', 'Refresh All Bookings and try again.');
+    return;
+  }
+  if (String(booking.status || '').toLowerCase() !== 'confirmed') {
+    showToast('', 'Show Not Confirmed', 'A missing member can be added only for a confirmed show.');
+    return;
+  }
+  var page = document.getElementById('adminMemberCreditPage');
+  var summary = document.getElementById('amc-booking-summary');
+  var phone = document.getElementById('amc-phone');
+  var name = document.getElementById('amc-name');
+  var email = document.getElementById('amc-email');
+  var status = document.getElementById('amc-member-status');
+  var err = document.getElementById('amc-err');
+  var submit = document.getElementById('amc-submit-btn');
+  if (!page || !phone || !name) return;
+  _adminMemberCreditBookingId = String(id);
+  _adminMemberCreditSaving = false;
+  if (summary) {
+    summary.innerHTML = '<strong>' + otsEscapeHtml(booking.venue || 'Venue not set') + '</strong>' +
+      '<span>' + otsEscapeHtml(formatDate(booking.date) || 'Date not set') + ' · ' +
+      otsEscapeHtml(getVenueTime(booking.venueId) || 'Time not set') + '</span>' +
+      '<span>Booked by: ' + otsEscapeHtml(getBookingPersonName(booking) || booking.name || '-') + '</span>';
+  }
+  phone.value = '';
+  name.value = '';
+  if (email) email.value = '';
+  if (status) status.textContent = '';
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
+  if (submit) { submit.disabled = false; submit.textContent = 'Add Member & Give Credit'; }
+  page.classList.add('show');
+  page.setAttribute('aria-hidden', 'false');
+  var adminPage = document.getElementById('page-admin');
+  if (adminPage) adminPage.classList.add('admin-member-credit-page-active');
+  try { document.body.classList.remove('modal-lock', 'admin-access-control-open'); } catch(e) {}
   try {
-    var existing = await neonSQL(
-      "SELECT id,status FROM claims WHERE booking_id=$1 AND member_phone=$2 AND COALESCE(claim_type,'show')='show' ORDER BY created_at DESC LIMIT 1",
-      [String(id), targetPhone || '']
-    );
-    if (existing && existing.length) {
-      var existingZone = await getMemberZoneName(targetPhone || '');
-      await neonSQL("UPDATE claims SET status='approved', reason='Admin manual show credit', zone_name=$2 WHERE id=$1", [existing[0].id, existingZone]);
-    } else {
-      var targetZone = await getMemberZoneName(targetPhone || '');
-      await neonSQL(
-        "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points, zone_name) VALUES ($1,$2,$3,'approved','show','Admin manual show credit',0,$4)",
-        [String(id), targetPhone || '', targetName, targetZone]
-      );
+    if (window.history && window.history.pushState && !(history.state && history.state.otsAdminView === 'admin-member-credit')) {
+      history.pushState({ otsPage:'admin', otsAdminView:'admin-member-credit' }, '', '#admin-member-credit');
     }
-    var balance = await rebalanceApprovedShowClaims(id, b, false);
-    await dbPatch('bookings', id, { proof_claimed: true });
-    b.proofClaimed = true;
-    await adminRestoreClearedRequest(id, true);
-    saveLocal();
-    renderUserBookings();
-    filterTable();
-    loadAdminClaims();
-    loadLeaderboard();
-    notifyMemberUpdate({
-      updateType: 'points',
-      status: 'approved',
-      bookingId: id,
-      venue: b.venue || '',
-      date: b.date || '',
-      points: String(balance.points),
-      reason: 'show completed',
-      phone: targetPhone || '',
-      email: targetEmail || '',
-      memberName: targetName
-    });
-    logAdminAction('manual_show_point', targetName + ' @ ' + (b.venue || '-') + ' #' + id).catch(function(){});
-    showToast('', 'Point Granted', targetName + ' now gets ' + balance.points + ' point(s). Approved performers share ' + balance.totalPool + ' total slot points.');
+  } catch(e) {}
+  window.scrollTo({ top:0, left:0, behavior:'auto' });
+  setTimeout(function(){ if (phone.focus) phone.focus({ preventScroll:true }); }, 0);
+}
+
+function closeAdminMemberCreditPage(useHistory) {
+  if (_adminMemberCreditSaving) return;
+  var page = document.getElementById('adminMemberCreditPage');
+  var adminPage = document.getElementById('page-admin');
+  if (page) { page.classList.remove('show'); page.setAttribute('aria-hidden', 'true'); }
+  if (adminPage) adminPage.classList.remove('admin-member-credit-page-active');
+  _adminMemberCreditBookingId = null;
+  setSuperAdminUploadLock(false);
+  try { document.body.classList.remove('modal-lock', 'admin-access-control-open'); } catch(e) {}
+  var wentBack = false;
+  if (useHistory !== false) {
+    try {
+      if (window.history && history.state && history.state.otsAdminView === 'admin-member-credit') {
+        wentBack = true;
+        history.back();
+      }
+    } catch(e) {}
+  }
+  if (!wentBack && typeof switchAdminTab === 'function') switchAdminTab('bookings');
+}
+
+async function lookupAdminMemberCredit() {
+  var phoneEl = document.getElementById('amc-phone');
+  var nameEl = document.getElementById('amc-name');
+  var emailEl = document.getElementById('amc-email');
+  var statusEl = document.getElementById('amc-member-status');
+  var errEl = document.getElementById('amc-err');
+  var phone = _normPhone(phoneEl && phoneEl.value || '');
+  if (errEl) errEl.style.display = 'none';
+  if (phone.length < 10) {
+    if (statusEl) statusEl.textContent = 'Enter a valid registered mobile number.';
+    return;
+  }
+  if (statusEl) statusEl.textContent = 'Finding member...';
+  var member = await adminFindMemberByPhone(phone);
+  if (member) {
+    if (nameEl) nameEl.value = member.name || '';
+    if (emailEl) emailEl.value = member.email || '';
+    if (statusEl) statusEl.textContent = 'Member found: ' + (member.name || phone);
+  } else if (statusEl) {
+    statusEl.textContent = 'No registered member found. Enter the member name to continue.';
+  }
+}
+
+async function submitAdminMemberCredit() {
+  if (_adminMemberCreditSaving) return;
+  if (!(hasAdminPerm('claims') || hasAdminPerm('slots'))) {
+    showToast('', 'No Access', 'You need slot or claim access to add a missing member.');
+    return;
+  }
+  var phoneEl = document.getElementById('amc-phone');
+  var nameEl = document.getElementById('amc-name');
+  var emailEl = document.getElementById('amc-email');
+  var errEl = document.getElementById('amc-err');
+  var submit = document.getElementById('amc-submit-btn');
+  var phone = _normPhone(phoneEl && phoneEl.value || '');
+  var name = String(nameEl && nameEl.value || '').trim();
+  if (errEl) errEl.style.display = 'none';
+  if (phone.length < 10) {
+    if (errEl) { errEl.textContent = 'Enter a valid registered mobile number.'; errEl.style.display = ''; }
+    return;
+  }
+  if (!name) {
+    if (errEl) { errEl.textContent = 'Enter the member name.'; errEl.style.display = ''; }
+    return;
+  }
+  var bookingId = _adminMemberCreditBookingId;
+  var booking = allBookings.find(function(x){ return String(x.id) === String(bookingId); });
+  if (!booking) {
+    if (errEl) { errEl.textContent = 'Booking not found. Close this page, refresh, and try again.'; errEl.style.display = ''; }
+    return;
+  }
+  _adminMemberCreditSaving = true;
+  if (submit) { submit.disabled = true; submit.textContent = 'Saving...'; }
+  try {
+    await grantAdminShowPointForMember(bookingId, phone, name, String(emailEl && emailEl.value || '').trim());
+    closeAdminMemberCreditPage();
   } catch(e) {
     console.error('[OTS] manual show point:', e);
-    showToast('', 'Failed', 'Could not grant manual show point.');
+    if (errEl) { errEl.textContent = 'Could not add this member. Please try again.'; errEl.style.display = ''; }
+    _adminMemberCreditSaving = false;
+    if (submit) { submit.disabled = false; submit.textContent = 'Add Member & Give Credit'; }
   }
+}
+
+async function grantAdminShowPointForMember(id, targetPhone, targetName, targetEmail) {
+  var b = allBookings.find(function(x){ return String(x.id) === String(id); });
+  if (!b) throw new Error('Booking not found');
+  var existing = await neonSQL(
+    "SELECT id,status FROM claims WHERE booking_id=$1 AND member_phone=$2 AND COALESCE(claim_type,'show')='show' ORDER BY created_at DESC LIMIT 1",
+    [String(id), targetPhone || '']
+  );
+  if (existing && existing.length) {
+    var existingZone = await getMemberZoneName(targetPhone || '');
+    await neonSQL("UPDATE claims SET status='approved', member_name=$2, reason='Admin manual show credit', zone_name=$3 WHERE id=$1", [existing[0].id, targetName, existingZone]);
+  } else {
+    var targetZone = await getMemberZoneName(targetPhone || '');
+    await neonSQL(
+      "INSERT INTO claims (booking_id, member_phone, member_name, status, claim_type, reason, points, zone_name) VALUES ($1,$2,$3,'approved','show','Admin manual show credit',0,$4)",
+      [String(id), targetPhone || '', targetName, targetZone]
+    );
+  }
+  var balance = await rebalanceApprovedShowClaims(id, b, false);
+  await dbPatch('bookings', id, { proof_claimed: true });
+  b.proofClaimed = true;
+  await adminRestoreClearedRequest(id, true);
+  saveLocal();
+  renderUserBookings();
+  filterTable();
+  loadAdminClaims();
+  loadLeaderboard();
+  notifyMemberUpdate({
+    updateType: 'points',
+    status: 'approved',
+    bookingId: id,
+    venue: b.venue || '',
+    date: b.date || '',
+    points: String(balance.points),
+    reason: 'show completed',
+    phone: targetPhone || '',
+    email: targetEmail || '',
+    memberName: targetName
+  });
+  logAdminAction('manual_show_point', targetName + ' @ ' + (b.venue || '-') + ' #' + id).catch(function(){});
+  showToast('', 'Point Granted', targetName + ' now gets ' + balance.points + ' point(s). Approved performers share ' + balance.totalPool + ' total slot points.');
+}
+
+async function adminGrantShowPoint(id, mode) {
+  if (!(hasAdminPerm('claims') || hasAdminPerm('slots'))) {
+    showToast('', 'No Access', 'You need slot or claim access to add a missing member.');
+    return;
+  }
+  openAdminMemberCreditPage(id);
 }
 function adminCancel(id) {
   if (!requireAdminPerm('slots', 'slot approval')) return;
