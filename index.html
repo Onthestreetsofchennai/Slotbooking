@@ -5608,6 +5608,7 @@ body.admin-access-control-open #adminAccessModal *{
     <div id="navLogo" onclick="handleLogoClick()" title="On The Streets" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:.75rem;"><img src="./ots-brand-mark.png" decoding="async" alt="On The Streets of Chennai" style="height:50px;width:auto;display:block;"> <span class="pending-badge" id="pending-count-badge" style="display:none">0</span></div>
     <div class="nav-tabs" id="publicNavTabs">
       <button class="ntab active" id="ntab-home" onclick="openPublicPage('home')">&#127908; Home</button>
+      <button class="ntab" id="ntab-join" onclick="location.href='./join.html'">Join OTS</button>
       <button class="ntab" id="ntab-form" style="display:none;" onclick="showPage('form')">&#128221; Book</button>
     </div>
     <div style="display:flex;gap:.8rem;align-items:center;">
@@ -20037,6 +20038,7 @@ function togglePw() {
         autocomplete="email" inputmode="email">
       <button class="ml-btn" id="mlSendBtn" onclick="mlSend()">Send OTP </button>
       <div id="mlTimerText"></div>
+      <button type="button" class="ml-link-btn" onclick="location.href='./join.html'">New here? Join the OTS community</button>
       <button type="button" class="ml-link-btn" onclick="mlOpenRegisterEmail()">Register your email ID</button>
       <button type="button" class="ml-install-btn" onclick="openInstallHelp()">Install app shortcut</button>
       <div class="ml-reg-panel" style="margin-top:1rem;">
