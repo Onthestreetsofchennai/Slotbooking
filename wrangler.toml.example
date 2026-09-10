@@ -1,0 +1,16 @@
+name = "ots-auth"
+main = "src/index.js"
+compatibility_date = "2026-04-29"
+
+# Put non-secret values here. Add secrets with:
+# wrangler secret put NEON_CONNECTION_STRING
+# wrangler secret put RESEND_API_KEY
+# wrangler secret put OTP_SECRET
+# wrangler secret put SESSION_SECRET
+# wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON
+[vars]
+NEON_SQL_URL = "https://YOUR_NEON_POOLER_HOST/sql"
+FIREBASE_PROJECT_ID = "ots-booking"
+GOOGLE_CLIENT_ID = "YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com"
+EMAIL_FROM = "On The Streets <otp@yourdomain.com>"
+ALLOWED_ORIGINS = "https://your-github-pages-domain.example"
