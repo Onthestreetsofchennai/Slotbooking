@@ -42,6 +42,18 @@ The `assets/` folder should contain:
 - `admin.html` can review those proof photos as a gallery.
 - Old single-photo proof records still continue to work.
 - Monthly reports continue to use the first proof photo as the report thumbnail.
+- `index.html` also adds a 12-second OTP request timeout so the Send OTP button does not stay stuck on Sending.
+- `index.html` now uses a proper laptop/desktop member login layout above 700px wide, while phone screens keep the mobile layout.
+
+## OTP Worker Fix
+
+If Send OTP still does not deliver email after uploading the frontend files, deploy this Worker update separately:
+
+```text
+C:\Users\acer\Documents\Codex\2026-09-02\read-start-here-new-laptop-md\outputs\OTS_CLOUDFLARE_WORKER_OTP_FIX_2026-09-10
+```
+
+The live Worker request currently reaches the server, but the real member OTP send times out. The Worker update adds timeouts around Neon and Resend so the backend returns a clear error instead of hanging.
 
 ## Do Not Upload
 
