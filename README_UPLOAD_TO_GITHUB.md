@@ -1,6 +1,6 @@
 # OTS GitHub Pages Upload Package
 
-Generated: 2026-09-02
+Generated: 2026-09-10
 
 Upload the contents of this folder directly into the GitHub repository root.
 Do not upload this folder as a nested folder.
@@ -35,6 +35,13 @@ The `assets/` folder should contain:
 - `assets/ots-icon-192.png`
 - `assets/ots-icon-512.png`
 - `assets/ots-apple-touch-icon.png`
+
+## Included In This Update
+
+- `index.html` now allows members to upload multiple proof photos after a show ends.
+- `admin.html` can review those proof photos as a gallery.
+- Old single-photo proof records still continue to work.
+- Monthly reports continue to use the first proof photo as the report thumbnail.
 
 ## Do Not Upload
 

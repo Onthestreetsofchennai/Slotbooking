@@ -6889,14 +6889,15 @@ body.admin-access-control-open #adminAccessModal *{
 <div class="modal-overlay" id="proofModal" onclick="if(event.target===this)closeProofModal()" ontouchmove="if(event.target===this)event.preventDefault()">
   <div class="modal-box" style="max-height:92vh;overflow-y:auto;" onclick="event.stopPropagation()" ontouchmove="event.stopPropagation()">
     <button class="modal-close" onclick="closeProofModal()" style="position:absolute;top:.9rem;right:1rem;background:transparent;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted);">x</button>
-    <div class="modal-title" style="font-size:1.1rem;"> Upload Photo</div>
+    <div class="modal-title" style="font-size:1.1rem;"> Upload Photos</div>
     <div id="proofModalVenue" style="font-size:.8rem;color:var(--blue);margin:.3rem 0 .8rem;"></div>
-    <p style="font-size:.78rem;color:var(--muted);line-height:1.6;margin-bottom:1rem;">Upload a photo from your performance. Once submitted it goes to admin for approval and the point is added to the leaderboard.</p>
-    <img id="proofPreview" style="display:none;width:100%;border-radius:8px;margin-bottom:.8rem;">
+    <p style="font-size:.78rem;color:var(--muted);line-height:1.6;margin-bottom:1rem;">Upload photos from your performance. Once submitted they go to admin for approval and the point is added to the leaderboard.</p>
+    <div id="proofPreviewList" style="display:none;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:.55rem;margin-bottom:.8rem;"></div>
+    <img id="proofPreview" style="display:none;width:100%;border-radius:8px;margin-bottom:.8rem;" alt="">
     <!-- File input is hidden; the button below triggers it directly via .click() -->
-    <input type="file" id="proofFileInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="previewProof(this)">
+    <input type="file" id="proofFileInput" accept="image/*" multiple style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="previewProof(this)">
     <button type="button" id="proofChooseBtn" class="proof-file-label" onclick="return openFileInputSafely('proofFileInput')">
-       Choose Photo
+       Choose Photos
     </button>
 
     <div id="proofManualTimeBox" style="display:none;margin-top:1rem;padding:1rem;border:1px solid rgba(245,200,66,.28);background:rgba(245,200,66,.06);border-radius:6px;">
@@ -8038,21 +8039,55 @@ function canEditBookingPerformers(b) {
   return !!(b && (b.status === 'pending' || b.status === 'confirmed') && !bookingShowEnded(b) && !b.proofUrl && !b.proofClaimed);
 }
 const LIGHT_PROOF_SQL = "CASE WHEN LENGTH(COALESCE(proof_url,'')) > 0 THEN '__uploaded__' ELSE '' END AS proof_url";
+const MAX_PROOF_PHOTOS = 4;
 function isProofPlaceholder(url) {
   return String(url || '') === '__uploaded__';
 }
-function isUsableProofImageUrl(url) {
+function isSingleUsableProofImageUrl(url) {
   var s = String(url || '').trim();
   if (!s || isProofPlaceholder(s)) return false;
   return /^data:image\//i.test(s) || /^https?:\/\//i.test(s) || /^blob:/i.test(s);
 }
+function parseProofPhotoList(value) {
+  if (Array.isArray(value)) {
+    return value.map(function(item){ return String(item || '').trim(); }).filter(isSingleUsableProofImageUrl);
+  }
+  var s = String(value || '').trim();
+  if (!s || isProofPlaceholder(s)) return [];
+  if (s.charAt(0) === '[' || s.charAt(0) === '{') {
+    try {
+      var parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parseProofPhotoList(parsed);
+      if (parsed && Array.isArray(parsed.photos)) return parseProofPhotoList(parsed.photos);
+    } catch(e) {}
+  }
+  return isSingleUsableProofImageUrl(s) ? [s] : [];
+}
+function primaryProofPhoto(value) {
+  return parseProofPhotoList(value)[0] || '';
+}
+function proofPhotoCount(value) {
+  var photos = parseProofPhotoList(value);
+  if (photos.length) return photos.length;
+  return isProofPlaceholder(value) ? 1 : 0;
+}
+function serializeProofPhotos(photos) {
+  var list = parseProofPhotoList(photos).slice(0, MAX_PROOF_PHOTOS);
+  return JSON.stringify(list);
+}
+function isUsableProofImageUrl(url) {
+  return !!primaryProofPhoto(url);
+}
 function bookingHasProofRecord(b) {
   return !!(b && (b.proofUrl || b.proofClaimed));
 }
-async function fetchBookingProofUrl(bookingId) {
+async function fetchBookingProofValue(bookingId) {
   var rows = await neonSQL('SELECT proof_url FROM bookings WHERE id=$1 LIMIT 1', [bookingId]);
-  var proof = rows && rows[0] ? (rows[0].proof_url || '') : '';
-  return isUsableProofImageUrl(proof) ? proof : '';
+  return rows && rows[0] ? (rows[0].proof_url || '') : '';
+}
+async function fetchBookingProofUrl(bookingId) {
+  var proof = await fetchBookingProofValue(bookingId);
+  return primaryProofPhoto(proof);
 }
 function mapVenueRows(vRows) {
   return (vRows || []).map(function(v){ return {
@@ -9664,11 +9699,12 @@ async function loadMemberStats() {
 // PROOF UPLOAD
 // ========================================
 var _proofBookingId = null;
-var _proofFileData  = null;
+var _proofFileData  = [];
 var _proofPreparing  = false;
 var _proofSubmitting = false;
 var _proofLastTapAt   = 0;
 var _proofModalScrollY = 0;
+var _proofPrepareToken = 0;
 
 function lockProofModalPage() {
   try {
@@ -10002,13 +10038,14 @@ async function checkInToShow(bookingId) {
 
 function openProofModal(bookingId, venueName) {
   _proofBookingId = bookingId;
-  _proofFileData  = null;
+  _proofFileData  = [];
   _proofPreparing = false;
   _proofSubmitting = false;
   var booking = myBookings.find(function(x){ return x.id === bookingId; }) || allBookings.find(function(x){ return x.id === bookingId; });
   var ownPhone = _normPhone(memberPhone || (booking && booking.phone) || '');
   _sharedMembers  = parseBookingPerformers(booking && booking.performers).filter(function(m){ return _normPhone(m.phone) && _normPhone(m.phone) !== ownPhone; });
   var preview   = document.getElementById('proofPreview');
+  var previewList = document.getElementById('proofPreviewList');
   var fileInput = document.getElementById('proofFileInput');
   var submitBtn = document.getElementById('proofSubmitBtn');
   var chooseBtn = document.getElementById('proofChooseBtn');
@@ -10020,9 +10057,10 @@ function openProofModal(bookingId, venueName) {
   var startInp = document.getElementById('proofShowStartTime');
   if (vn)        vn.textContent         = venueName || 'your show';
   if (preview)  { preview.src=''; preview.style.display='none'; }
+  if (previewList) { previewList.innerHTML = ''; previewList.style.display = 'none'; }
   if (fileInput)  fileInput.value       = '';
   if (submitBtn)  { submitBtn.disabled = true; submitBtn.textContent = 'Submit for Approval'; }
-  if (chooseBtn)  chooseBtn.textContent = ' Choose Photo';
+  if (chooseBtn)  chooseBtn.textContent = ' Choose Photos';
   if (err)        { err.textContent = ''; err.style.display = 'none'; err.style.color = '#ff4b4b'; }
   if (shareInp)   shareInp.value        = '';
   if (arrivalInp) arrivalInp.value      = '';
@@ -10040,9 +10078,10 @@ function closeProofModal() {
   document.getElementById('proofModal').classList.remove('show');
   unlockProofModalPage();
   _proofBookingId = null;
-  _proofFileData  = null;
+  _proofFileData  = [];
   _proofPreparing = false;
   _proofSubmitting = false;
+  _proofPrepareToken++;
   _sharedMembers  = [];
 }
 
@@ -10276,33 +10315,75 @@ async function addMemberClaimFromRequest(bookingId) {
   }
 }
 
-function previewProof(input) {
-  var file = input && input.files && input.files[0];
-  if (!file) return;
+async function previewProof(input) {
+  var selected = input && input.files ? Array.from(input.files) : [];
+  var files = selected.filter(function(file){ return file && /^image\//i.test(file.type || ''); }).slice(0, MAX_PROOF_PHOTOS);
+  if (!files.length) return;
+  var token = ++_proofPrepareToken;
   var preview   = document.getElementById('proofPreview');
+  var previewList = document.getElementById('proofPreviewList');
   var chooseBtn = document.getElementById('proofChooseBtn');
   var submitBtn = document.getElementById('proofSubmitBtn');
   var err       = document.getElementById('proofErr');
-  _proofFileData = null;
+  _proofFileData = [];
   _proofPreparing = true;
-  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Preparing photo...'; }
+  if (preview) { preview.src = ''; preview.style.display = 'none'; }
+  if (previewList) { previewList.innerHTML = ''; previewList.style.display = 'none'; }
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Preparing photos...'; }
   if (chooseBtn) chooseBtn.textContent = ' Preparing...';
-  if (err) { err.textContent = 'Preparing photo. Please wait a moment.'; err.style.color = 'var(--muted)'; err.style.display = ''; }
-  // Keep proof photos small enough for reliable mobile uploads on slower networks.
-  _compressImage(file, 420, 0.52, function(dataUrl) {
-    _proofFileData = dataUrl;
-    if (preview)   { preview.src = dataUrl; preview.style.display = 'block'; }
-    if (chooseBtn)   chooseBtn.textContent = ' Change Photo';
+  if (err) { err.textContent = 'Preparing photos. Please wait a moment.'; err.style.color = 'var(--muted)'; err.style.display = ''; }
+  try {
+    var photos = [];
+    for (var i = 0; i < files.length; i++) {
+      if (submitBtn) submitBtn.textContent = 'Preparing ' + (i + 1) + '/' + files.length + '...';
+      photos.push(await compressProofImage(files[i]));
+      if (token !== _proofPrepareToken) return;
+    }
+    _proofFileData = photos;
+    renderProofPreviewList(photos);
+    if (chooseBtn) chooseBtn.textContent = ' Change Photos';
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit for Approval'; }
-    if (err) { err.textContent = 'Photo ready. Tap Submit for Approval once.'; err.style.color = 'var(--green)'; err.style.display = ''; }
+    if (err) {
+      var skipped = selected.length > MAX_PROOF_PHOTOS ? ' Only the first ' + MAX_PROOF_PHOTOS + ' were added.' : '';
+      err.textContent = photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' ready. Tap Submit for Approval once.' + skipped;
+      err.style.color = 'var(--green)';
+      err.style.display = '';
+    }
     _proofPreparing = false;
-  }, function(errorMsg) {
+  } catch(errorMsg) {
+    if (token !== _proofPrepareToken) return;
     _proofPreparing = false;
-    _proofFileData = null;
+    _proofFileData = [];
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submit for Approval'; }
-    if (chooseBtn) chooseBtn.textContent = ' Choose Photo';
+    if (chooseBtn) chooseBtn.textContent = ' Choose Photos';
     if (err) { err.textContent = errorMsg || 'Could not prepare this photo. Please choose another image.'; err.style.color = '#ff4b4b'; err.style.display = ''; }
     showToast('', 'Photo Not Ready', errorMsg || 'Please choose another image.');
+  }
+}
+
+function renderProofPreviewList(photos) {
+  photos = parseProofPhotoList(photos);
+  var list = document.getElementById('proofPreviewList');
+  var preview = document.getElementById('proofPreview');
+  if (list) {
+    list.innerHTML = photos.map(function(url, index) {
+      return '<div style="position:relative;aspect-ratio:1/1;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--surface);">' +
+        '<img src="' + otsEscapeHtml(url) + '" alt="Proof photo ' + (index + 1) + '" style="width:100%;height:100%;object-fit:cover;">' +
+        '<span style="position:absolute;top:.35rem;left:.35rem;background:rgba(13,11,26,.78);color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:.18rem .42rem;">' + (index + 1) + '</span>' +
+      '</div>';
+    }).join('');
+    list.style.display = photos.length ? 'grid' : 'none';
+  }
+  if (preview) {
+    preview.src = photos[0] || '';
+    preview.style.display = (!list && photos.length) ? 'block' : 'none';
+  }
+}
+
+function compressProofImage(file) {
+  return new Promise(function(resolve, reject) {
+    // Keep proof photos small enough for reliable mobile uploads on slower networks.
+    _compressImage(file, 420, 0.52, resolve, reject);
   });
 }
 
@@ -10477,12 +10558,13 @@ async function submitProof() {
   var btn = document.getElementById('proofSubmitBtn');
   var err = document.getElementById('proofErr');
   if (_proofPreparing) {
-    if (err) { err.textContent = 'Photo is still preparing. Please wait a moment.'; err.style.color = 'var(--muted)'; err.style.display = ''; }
+    if (err) { err.textContent = 'Photos are still preparing. Please wait a moment.'; err.style.color = 'var(--muted)'; err.style.display = ''; }
     return;
   }
-  if (!_proofBookingId || !_proofFileData) {
-    if (err) { err.textContent = 'Please choose a photo first.'; err.style.color = '#ff4b4b'; err.style.display = ''; }
-    showToast('', 'Choose Photo', 'Please choose a photo before submitting.');
+  var proofPhotos = parseProofPhotoList(_proofFileData);
+  if (!_proofBookingId || !proofPhotos.length) {
+    if (err) { err.textContent = 'Please choose at least one photo first.'; err.style.color = '#ff4b4b'; err.style.display = ''; }
+    showToast('', 'Choose Photos', 'Please choose at least one photo before submitting.');
     return;
   }
   var proofBooking = myBookings.find(function(x){ return x.id === _proofBookingId; }) ||
@@ -10512,8 +10594,9 @@ async function submitProof() {
   try {
     var proofClaimMembers = proofClaimMembersForBooking(proofBooking, _sharedMembers, true);
     if (!proofClaimMembers.length) throw new Error('Registered member phone is missing');
-    // Save proof photo on the booking - proof_claimed stays FALSE until admin approves
-    var bookingUpdates = { proof_url: _proofFileData, proof_claimed: false };
+    var proofValue = serializeProofPhotos(proofPhotos);
+    // Save proof photos on the booking - proof_claimed stays FALSE until admin approves
+    var bookingUpdates = { proof_url: proofValue, proof_claimed: false };
     if (manualArrivalIso) {
       bookingUpdates.checkin_at = manualArrivalIso;
       bookingUpdates.checkin_lat = null;
@@ -10536,7 +10619,7 @@ async function submitProof() {
     [myBookings, allBookings].forEach(function(arr) {
       var b = arr.find(function(x){ return x.id === _proofBookingId; });
       if (b) {
-        b.proofUrl = _proofFileData;
+        b.proofUrl = proofValue;
         b.proofClaimed = false;
         if (manualArrivalIso) {
           b.checkinAt = manualArrivalIso;
@@ -10552,7 +10635,7 @@ async function submitProof() {
     closeProofModal();
     renderUserBookings();
     var extra = _sharedMembers.length ? ' + ' + _sharedMembers.length + ' band member(s).' : '.';
-    showToast('', 'Proof Submitted!', 'Admin will review and approve the claim for you' + extra);
+    showToast('', 'Proof Submitted!', 'Admin will review the uploaded photos and approve the claim for you' + extra);
   } catch(e) {
     _proofSubmitting = false;
     var msg = (e && e.message) || 'Unknown error';
@@ -11537,14 +11620,14 @@ function renderUserBookings() {
         if (checkedIn && showEnded) {
           // Show over + checked in  allow photo upload
           actionHtml = `<div style="font-size:.7rem;color:#4ade80;margin-bottom:.35rem;"> Checked in - Show ended</div>
-            <button class="proof-upload-btn" onclick="openProofModal('${b.id}','${(b.venue||'').replace(/'/g,"\\'")}')"> Upload Photo</button>
+            <button class="proof-upload-btn" onclick="openProofModal('${b.id}','${(b.venue||'').replace(/'/g,"\\'")}')"> Upload Photos</button>
             <button class="proof-upload-btn" style="margin-top:.35rem;background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;" onclick="addMemberClaimFromRequest('${b.id}')"> Add Member</button>`;
         } else if (checkedIn && !showEnded) {
           // Checked in, show still ongoing - wait for it to end
           actionHtml = `<span class="proof-claimed-badge" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.35);color:#4ade80;font-size:.72rem;"> Checked In - Show Ongoing</span>`;
         } else if (showEnded && !checkedIn) {
           actionHtml = `<span style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:.35rem;"> No check-in recorded</span>
-            <button class="proof-upload-btn" onclick="openProofModal('${b.id}','${(b.venue||'').replace(/'/g,"\\'")}')"> Add Time & Upload Photo</button>
+            <button class="proof-upload-btn" onclick="openProofModal('${b.id}','${(b.venue||'').replace(/'/g,"\\'")}')"> Add Time & Upload Photos</button>
             <button class="proof-upload-btn" style="margin-top:.35rem;background:rgba(112,186,244,.08);border-color:rgba(112,186,244,.32);color:#70BAF4;" onclick="addMemberClaimFromRequest('${b.id}')"> Add Member</button>
             <button class="bi-cancel-btn" onclick="dismissRequest('${b.id}')" title="Remove from list" style="opacity:.65;">x Clear</button>`;
         } else if (!checkState.can) {
@@ -12167,10 +12250,13 @@ function _renderAdminClaims() {
   el.innerHTML = Object.values(byBooking).map(function(grp) {
     var info = grp.info;
     var bookingIdAttr = String(info.booking_id||'').replace(/'/g, '');
+    var proofThumb = primaryProofPhoto(info.proof_url);
+    var proofCount = proofPhotoCount(info.proof_url);
+    var proofBadge = proofCount > 1 ? '<span style="position:absolute;right:.25rem;bottom:.25rem;background:rgba(13,11,26,.82);color:#fff;font-size:.58rem;font-weight:800;border-radius:999px;padding:.14rem .36rem;">+' + (proofCount - 1) + '</span>' : '';
     var proofHtml = info.proof_url
       ? (isProofPlaceholder(info.proof_url)
-        ? `<button class="btn-secondary" onclick="adminViewClaimProof('${bookingIdAttr}')" style="font-size:.7rem;padding:.45rem .6rem;">View Photo</button>`
-        : `<img src="${info.proof_url}" onclick="adminViewClaimProof('${bookingIdAttr}')" style="width:80px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border);" title="Click to view full photo">`)
+        ? `<button class="btn-secondary" onclick="adminViewClaimProof('${bookingIdAttr}')" style="font-size:.7rem;padding:.45rem .6rem;">View Photos</button>`
+        : `<div onclick="adminViewClaimProof('${bookingIdAttr}')" style="position:relative;width:80px;height:60px;cursor:pointer;"><img src="${otsEscapeHtml(proofThumb)}" style="width:80px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border);" title="Click to view proof photos">${proofBadge}</div>`)
       : '<span style="font-size:.72rem;color:var(--muted);">No photo yet</span>';
     var claimsHtml = grp.claims.map(function(c) {
       var statusBadge = c.status === 'approved'
@@ -12681,35 +12767,47 @@ async function withdrawClaim(claimId) {
 async function adminViewClaimProof(bookingId) {
   var row = _adminClaims.find(function(c){ return String(c.booking_id) === String(bookingId); });
   if (!row || !row.proof_url) { showToast('','No Photo','No proof photo found for this claim.'); return; }
-  var url = row.proof_url;
-  if (isProofPlaceholder(url)) {
+  var proofValue = row.proof_url;
+  if (isProofPlaceholder(proofValue)) {
     showToast('', 'Loading Photo', 'Opening proof photo...');
     try {
-      url = await fetchBookingProofUrl(bookingId);
-      if (url) row.proof_url = url;
+      proofValue = await fetchBookingProofValue(bookingId);
+      if (proofValue) row.proof_url = proofValue;
     } catch(e) {
       showToast('', 'Photo Load Failed', 'Please refresh and try again.');
       return;
     }
   }
-  if (!url || isProofPlaceholder(url)) { showToast('','No Photo','No proof photo found for this claim.'); return; }
-  _openProofOverlay(url);
+  if (!proofValue || isProofPlaceholder(proofValue) || !parseProofPhotoList(proofValue).length) { showToast('','No Photo','No proof photo found for this claim.'); return; }
+  _openProofOverlay(proofValue);
 }
 
 function adminViewProofUrl(url) {
   _openProofOverlay(url);
 }
 
-function _openProofOverlay(url) {
+function _openProofOverlay(value) {
+  var photos = parseProofPhotoList(value);
+  if (!photos.length) return;
   const ov = document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;cursor:pointer;';
-  const img = document.createElement('img');
-  img.src = url;
-  img.style.cssText = 'max-width:90vw;max-height:80vh;border-radius:10px;box-shadow:0 8px 40px #000;';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;cursor:pointer;padding:1rem;overflow:auto;';
+  const grid = document.createElement('div');
+  grid.style.cssText = photos.length === 1
+    ? 'display:flex;align-items:center;justify-content:center;width:100%;'
+    : 'display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem;width:min(920px,94vw);max-height:82vh;overflow:auto;';
+  photos.forEach(function(url, index) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = 'Proof photo ' + (index + 1);
+    img.style.cssText = photos.length === 1
+      ? 'max-width:90vw;max-height:80vh;border-radius:10px;box-shadow:0 8px 40px #000;'
+      : 'width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;box-shadow:0 8px 28px #000;border:1px solid rgba(255,255,255,.16);';
+    grid.appendChild(img);
+  });
   const hint = document.createElement('div');
   hint.style.cssText = 'color:#fff;font-size:.78rem;opacity:.7;';
-  hint.textContent = 'Tap anywhere to close';
-  ov.appendChild(img);
+  hint.textContent = photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' - tap anywhere to close';
+  ov.appendChild(grid);
   ov.appendChild(hint);
   ov.onclick = () => document.body.removeChild(ov);
   document.body.appendChild(ov);
@@ -13655,21 +13753,30 @@ function renderBookingPager(totalRows) {
 }
 function renderAdminProofCell(b, canRescueShows) {
   var id = otsJsString(b && b.id || '');
+  var proofThumb = primaryProofPhoto(b && b.proofUrl);
+  var proofCount = proofPhotoCount(b && b.proofUrl);
+  var proofCountText = proofCount > 1 ? ' +' + (proofCount - 1) : '';
   var rescueButtons = canRescueShows && b.status === 'confirmed'
     ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminAllowProofUpload('${id}')">Allow Upload</button>
        <button type="button" class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>`
     : '';
   if (b.proofClaimed) {
     var proofPreview = b.proofUrl && isProofPlaceholder(b.proofUrl)
-      ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminViewProof('${id}')">View Photo</button>`
-      : (b.proofUrl ? `<div style="display:flex;align-items:center;gap:.4rem;cursor:pointer;" onclick="adminViewProof('${id}')">
-           <img src="${b.proofUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1.5px solid var(--green);" alt="proof">
-           <span style="font-size:.65rem;font-weight:700;color:var(--green);letter-spacing:.04em;"> CLAIMED</span>
+      ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminViewProof('${id}')">View Photos</button>`
+      : (proofThumb ? `<div style="display:flex;align-items:center;gap:.4rem;cursor:pointer;" onclick="adminViewProof('${id}')">
+           <img src="${otsEscapeHtml(proofThumb)}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1.5px solid var(--green);" alt="proof">
+           <span style="font-size:.65rem;font-weight:700;color:var(--green);letter-spacing:.04em;">CLAIMED${proofCountText}</span>
          </div>` : `<span style="font-size:.68rem;color:var(--green);font-weight:800;letter-spacing:.04em;">CLAIMED</span>`);
     return proofPreview + rescueButtons;
   }
   if (b.proofUrl) {
-    return `<span style="font-size:.68rem;color:var(--yellow);font-weight:600;"> Uploaded</span>
+    var pendingProof = isProofPlaceholder(b.proofUrl)
+      ? `<button class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;" onclick="adminViewProof('${id}')">View Photos</button>`
+      : (proofThumb ? `<div style="display:flex;align-items:center;gap:.4rem;cursor:pointer;" onclick="adminViewProof('${id}')">
+           <img src="${otsEscapeHtml(proofThumb)}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1.5px solid var(--yellow);" alt="proof">
+           <span style="font-size:.65rem;font-weight:700;color:var(--yellow);letter-spacing:.04em;">UPLOADED${proofCountText}</span>
+         </div>` : `<span style="font-size:.68rem;color:var(--yellow);font-weight:600;">Uploaded</span>`);
+    return `${pendingProof}
       ${canRescueShows && b.status === 'confirmed' ? `<button type="button" class="btn-secondary" style="font-size:.62rem;padding:.25rem .45rem;margin-top:.3rem;" onclick="adminGrantShowPoint('${id}','team')">Add Member</button>` : ''}`;
   }
   if (b.checkinAt) {
@@ -14203,22 +14310,22 @@ async function createEmergencyUploadAccess(data) {
 async function adminViewProof(id) {
   const b = allBookings.find(x=>x.id===id);
   if (!b || !b.proofUrl) return;
-  var url = b.proofUrl;
-  if (isProofPlaceholder(url)) {
+  var proofValue = b.proofUrl;
+  if (isProofPlaceholder(proofValue)) {
     showToast('', 'Loading Photo', 'Opening proof photo...');
     try {
-      url = await fetchBookingProofUrl(id);
-      if (url) b.proofUrl = url;
+      proofValue = await fetchBookingProofValue(id);
+      if (proofValue) b.proofUrl = proofValue;
     } catch(e) {
       showToast('', 'Photo Load Failed', 'Please refresh and try again.');
       return;
     }
   }
-  if (!url || isProofPlaceholder(url)) {
+  if (!proofValue || isProofPlaceholder(proofValue) || !parseProofPhotoList(proofValue).length) {
     showToast('', 'No Photo', 'No proof photo found.');
     return;
   }
-  _openProofOverlay(url);
+  _openProofOverlay(proofValue);
 }
 function getBookingDismissKeys(b) {
   var keys = [];
@@ -15034,7 +15141,7 @@ function buildMonthlyReportRows(ctx) {
       bookedBy: getBookingPersonName(b) || '',
       performanceType: b.type || '',
       performers: bookingPerformersText(b) || b.name || '',
-      photoUrl: isUsableProofImageUrl(b.proofUrl) ? (b.proofUrl || '') : '',
+      photoUrl: primaryProofPhoto(b.proofUrl),
       hasProof: hasProof,
       sortMs: bookingStartTimeMs(b)
     };
@@ -15241,8 +15348,9 @@ function generateMonthlyReportPreview(allowRefresh) {
 function monthlyReportSetRowPhoto(row, proofUrl) {
   if (!row) return row;
   proofUrl = String(proofUrl || '').trim();
-  if (isUsableProofImageUrl(proofUrl)) {
-    row.photoUrl = proofUrl;
+  var primaryPhoto = primaryProofPhoto(proofUrl);
+  if (primaryPhoto) {
+    row.photoUrl = primaryPhoto;
     row.hasProof = true;
     if (row.booking) row.booking.proofUrl = proofUrl;
   } else {
